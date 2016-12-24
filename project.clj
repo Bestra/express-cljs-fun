@@ -11,8 +11,8 @@
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}
              :dev {:dependencies [[com.cemerick/piggieback "0.2.1"]
-                                [org.clojure/tools.nrepl "0.2.10"]]
-                 :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}}}
+                                [org.clojure/tools.nrepl "0.2.12"]]}
+                 :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}}
   :cljsbuild {
     :builds [{:id "server"
               :source-paths ["src-server"]
