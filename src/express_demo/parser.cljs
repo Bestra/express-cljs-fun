@@ -1,4 +1,4 @@
-(ns express-demo.server.parser
+(ns express-demo.parser
   (:require [cljs.nodejs :as nodejs]))
 
 (nodejs/enable-util-print!)
@@ -16,7 +16,8 @@
   (let [src (.readFileSync fs path "utf8")]
     (.parse recast src (js-obj "esprima" babel))))
 
-(def sample-path "/Users/bestra/mh/tahi/client/app/pods/components/admin-role/component.js")
+(def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/admin-role/component.js")
+(def sample-hbs-path "/Users/bestra/mh/tahi/client/app/pods/components/admin-role/template.hbs")
 
 
 (defn visit-imports [path]
@@ -28,5 +29,3 @@
     (do (print "visiting")
         (.visit recast ast cb)
         foo)))
-
-(visit-imports sample-path)

@@ -4,7 +4,8 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
-                 [org.clojure/clojurescript "1.9.293"]]
+                 [org.clojure/clojurescript "1.9.293"]
+                 [org.clojure/core.match "0.3.0-alpha4"]]
   :plugins [[lein-cljsbuild "1.1.5"]]
   :clean-targets ^{:protect false} ["resources"]
   :main ^:skip-aot express-demo.core
@@ -15,7 +16,7 @@
                  :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}}
   :cljsbuild {
     :builds [{:id "server"
-              :source-paths ["src-server"]
+              :source-paths ["src"]
               :compiler {
                 :main express-demo.server
                 :output-to "resources/public/js/server-side/server.js"
