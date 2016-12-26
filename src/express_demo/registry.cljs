@@ -6,18 +6,10 @@
 
 (nodejs/enable-util-print!)
 (def path (nodejs/require "path"))
+
+
 (def registry-for-path (atom {}))
 (def registry-for-module-name (atom {}))
-
-(defn find-app-root [abs-path]
-  (first (filter #(re-find (re-pattern %1) abs-path)
-                 @config/app-roots)))
-
-(defn app-path [abs-path]
-  "expects an absolute path"
-  (let [splitter (find-app-root abs-path)
-        [_ s] (.split abs-path splitter)]
-    s))
 
 (defn singularize [name]
   (.substring name 0 (dec  (.-length name))))
@@ -33,8 +25,18 @@
            [true "template"] (str "template:components/" pod-path)
            :else (str module-type ":" pod-path))))
 
-(defn module-name [app-path]
-  (let [segments (clojure.string/split app-path #"/")]
+(defn find-app-root [abs-path]
+  (first (filter #(re-find (re-pattern %1) abs-path)
+                 @config/app-roots)))
+
+(defn app-path [abs-path]
+  "expects an absolute path"
+  (let [splitter (find-app-root abs-path)
+        [_ s] (.split abs-path splitter)]
+    s))
+
+(defn module-name [absolute-path]
+  (let [segments (clojure.string/split (app-path absolute-path) #"/")]
     (match [segments]
            [["" "pods" "components" & dirs]] (make-pod-module-name dirs true)
            [["" "pods" & dirs ]] (make-pod-module-name dirs false)
@@ -46,8 +48,5 @@
 (def sample-classic-path "/Users/bestra/mh/tahi/client/app/components/admin-role.js")
 (def sample-js-path-2 "/Users/bestra/mh/tahi/client/app/pods/paper/index/route.js")
 
-;; (module-name (app-path sample-js-path))
 
-;; (module-name (app-path sample-hbs-path))
-
-;; (module-name (app-path sample-classic-path))
+;; (module-name sample-classic-path)
