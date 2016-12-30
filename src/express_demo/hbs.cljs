@@ -1,6 +1,7 @@
 (ns express-demo.hbs
   (:require [cljs.nodejs :as nodejs]
-            [clojure.spec :as s]))
+            [clojure.spec :as s]
+            clojure.set))
 
 (nodejs/enable-util-print!)
 
@@ -33,6 +34,7 @@
                     "else"
                     "concat"
                     "each"
+                    "with"
                     })
 (def htmlbars (nodejs/require "htmlbars/dist/cjs/htmlbars-syntax"))
 (def util (nodejs/require "util"))
@@ -40,7 +42,6 @@
 (defn find-nodes [ast node-type filter-fn]
   (let [found-nodes #js[]
         filter (fn [node]
-                 (println "entered node")
                  (if (filter-fn node) (.push found-nodes node)))
         finder (js-obj node-type
                        #js {:enter filter})]
@@ -61,15 +62,23 @@
   true)
 
 (s/def ::position (s/keys :req-un [::line ::column]))
-(s/def ::location (s/keys :req-un [::file-path ::start ::end]))
-(s/def ::binding (s/keys :req-un [::path ::type ::location]))
+(s/def ::location (s/keys :req-un [::start ::end]))
+(s/def ::binding (s/keys :req-un [::path ::file-path ::type ::location]))
 
-(defn node->binding [expr file-path]
-  {:path (.-original expr)
+(defn location-map [node]
+  (let [get-loc #(js->clj (aget node "loc" %) :keywordize-keys true)]
+    {:start (get-loc "start")
+     :end (get-loc "end")}))
+
+(defn node->bound-path [path-node]
+  {:path-name (.-original path-node)
+    :location (location-map path-node)})
+
+(defn node->binding [path-node file-path]
+  {:path (.-original path-node)
+   :file-path file-path
    :type "binding"
-   :location {:file-path file-path
-              :start (js->clj (.. expr -loc -start) :keywordize-keys true)
-              :end (js->clj (.. expr -loc -end) :keywordize-keys true)}})
+   :location (js->clj (.. path-node -loc) :keywordize-keys true)})
 
 (defn extract-bindings [str file-path]
   (->> str
@@ -81,13 +90,16 @@
   (parse? (:src entry)))
 
 (defn is-component? [block-or-mustache registry]
-  (let [possible-name (.. block-or-mustache -path -original)]
-    (contains? (:component registry) possible-name)))
+  (let [possible-name (str "component:" (.. block-or-mustache -path -original))]
+    (contains? registry possible-name)))
 
 ;; the attr pairs need to be turned into 'set' nodes too
 (defn node->invocation [node]
-  {:name (.. node -path -original)
-   :attrs (.. node -hash -pairs)})
+  (let [path (node->bound-path (.. node -path))]
+    {:name (:path-name path)
+     :location (location-map node)
+     :path path
+     :attrs (.. node -hash -pairs)}))
 
 (defn process-mustache-invocations [entry registry]
   (let [invocations (->> entry
@@ -98,19 +110,38 @@
     (update-in entry [:invocations] #(apply conj % invocations))))
 
 (defn process-block-invocations [entry registry]
-  )
+  (let [invocations (->> entry
+                         ast
+                         (all-nodes-of-type "BlockStatement")
+                         (filter #(is-component? % registry))
+                         (map node->invocation))]
+    (update-in entry [:invocations] #(apply conj % invocations))))
 
 (defn process-actions [entry]
   "could be element modifiers or subexpressions"
   entry)
-(defn process-bindings [entry] entry)
+
+(defn process-bound-paths [entry]
+  (let [invocation-paths (->> entry
+                              :invocations
+                              (map :path)
+                              set)
+        all-paths (->> entry
+                       ast
+                       (all-nodes-of-type "PathExpression")
+                       (map node->bound-path))
+        bindings (->> all-paths
+                      (remove #(contains? invocation-paths %))
+                      (remove #(contains? ember-helper-paths (:path-name %))))]
+
+    (update-in entry [:bindings] #(into [] bindings))))
 
 (defn create-template-entry [str file-path registry]
   (-> (create-entry str file-path)
       (process-mustache-invocations registry)
       (process-block-invocations registry)
       (process-actions)
-      (process-bindings)))
+      (process-bound-paths)))
 
 (defn create-entry [template-str file-path]
   {:src template-str
@@ -120,7 +151,6 @@
    :bindings []})
 
 (def test-hbs-file "<div> Welcome!</div>
-
 
 {{bound.path}}
 {{#some-component foo=bar as |stuff|}}
@@ -136,7 +166,8 @@
   {{item.name}}
 {{/each}}")
 
-(def test-entry (create-entry test-hbs-file "/foo"))
+(def test-registry {"component:another-component" "/foo/component"
+                    "component:some-component" "/foo/component"})
+(def test-entry (create-entry test-hbs-file "foo"))
+(create-template-entry test-hbs-file "/Users/foo" test-registry)
 
-(process-mustache-invocations test-entry
-                                      {:component {"another-component" "/foo/component"}})
