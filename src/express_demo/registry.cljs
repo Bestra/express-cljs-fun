@@ -8,22 +8,35 @@
 (def path (nodejs/require "path"))
 
 
-(def registry-for-path (atom {}))
-(def registry-for-module-name (atom {}))
+(def all-paths
+  "all file paths known to the app"
+  (atom #{}))
+
+(def path-to-module
+  "a mapping of paths to module names"
+  (atom {}))
+
+(def module-to-path
+  "a  mapping of module names to paths"
+  (atom {}))
+
+(def path-to-entry
+  "maps absolute paths to actual entries"
+  (atom {}))
 
 (defn singularize [name]
   (.substring name 0 (dec  (.-length name))))
 
 (defn make-classic-module-name [type dirs]
   (let [[classic-path _] (.split (clojure.string/join "/" dirs) ".")]
-    (str type ":" classic-path)))
+    [type (str type ":" classic-path)]))
 
 (defn make-pod-module-name [dirs component?]
   (let [[module-type _] (.split (last dirs) ".")
         pod-path (clojure.string/join "/" (drop-last 1 dirs))]
     (match [component? module-type]
-           [true "template"] (str "template:components/" pod-path)
-           :else (str module-type ":" pod-path))))
+           [true "template"] ["template" (str "template:components/" pod-path)]
+           :else [module-type (str module-type ":" pod-path)])))
 
 (defn find-app-root [abs-path]
   (first (filter #(re-find (re-pattern %1) abs-path)
@@ -41,12 +54,20 @@
            [["" "pods" "components" & dirs]] (make-pod-module-name dirs true)
            [["" "pods" & dirs ]] (make-pod-module-name dirs false)
            [["" module-dir & dirs]] (make-classic-module-name (singularize module-dir) dirs)
-           :else nil)))
+           :else ["unknown" nil])))
 
-(def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/admin-role/component.js")
-(def sample-hbs-path "/Users/bestra/mh/tahi/client/app/pods/components/admin-role/template.hbs")
-(def sample-classic-path "/Users/bestra/mh/tahi/client/app/components/admin-role.js")
-(def sample-js-path-2 "/Users/bestra/mh/tahi/client/app/pods/paper/index/route.js")
+(def found-module-types (atom #{}))
+(def valid-module-types
+  "the module types ember's resolver recognizes"
+  #{"route" "controller" "template" "component"
+    "view" "model" "adapter" "serializer"
+    "mixin" "helper"})
 
+(defn register-path [absolute-path]
+  "add a two-way mapping between the module name and the file path"
+  (let [[module-type m] (module-name absolute-path)]
+    (if (contains? valid-module-types module-type)
+      (do (swap! found-module-types #(conj % module-type))
+          (swap! path-to-module #(assoc % absolute-path m))
+          (swap! module-to-path #(assoc % m absolute-path))))))
 
-;; (module-name sample-classic-path)

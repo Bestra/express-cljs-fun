@@ -11,19 +11,8 @@
 
 (def all-source-paths (atom #{}))
 
-(defn add-files [path-arr]
-  (swap! all-source-paths #(apply conj %1 path-arr)))
-
-(defn get-source-files [dir]
-  (let [all-files (walk (.normalize path dir))
-        file-types #{".hbs" ".js"}]
-    (js->clj (filter
-              #(contains? file-types (.extname path %1) )
-              all-files))))
-
 (defn say-hello! [req res]
   (.send res "Hello world!"))
-
 
 (defn -main [path-name]
   (let [app (express)

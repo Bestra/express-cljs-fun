@@ -35,6 +35,7 @@
                     "concat"
                     "each"
                     "with"
+                    "yield"
                     })
 (def htmlbars (nodejs/require "htmlbars/dist/cjs/htmlbars-syntax"))
 (def util (nodejs/require "util"))
@@ -58,8 +59,6 @@
 
 (def extract-paths (partial all-nodes-of-type "PathExpression"))
 
-(defn is-helper? [binding]
-  true)
 
 (s/def ::position (s/keys :req-un [::line ::column]))
 (s/def ::location (s/keys :req-un [::start ::end]))
@@ -93,13 +92,19 @@
   (let [possible-name (str "component:" (.. block-or-mustache -path -original))]
     (contains? registry possible-name)))
 
+(defn is-helper? [binding]
+  true)
+
 ;; the attr pairs need to be turned into 'set' nodes too
 (defn node->invocation [node]
-  (let [path (node->bound-path (.. node -path))]
-    {:name (:path-name path)
-     :location (location-map node)
-     :path path
-     :attrs (.. node -hash -pairs)}))
+  (let [path (node->bound-path (.. node -path))
+        i {:name (:path-name path)
+           :location (location-map node)
+           :path path
+           :attrs (.. node -hash -pairs)}]
+    (if (.. node -program)
+      (assoc i :block-params (.. node -program -blockParams))
+      i)))
 
 (defn process-mustache-invocations [entry registry]
   (let [invocations (->> entry
