@@ -48,6 +48,15 @@
         [_ s] (.split abs-path splitter)]
     s))
 
+(defn import-path->file-path [import-path app-name possible-paths]
+  "given something like 'my-app/models/foo' where 'my-app' is the
+   application name, translate that path into '/path/to/my-app/app/models/foo'"
+  (let [[name & rest] (.split import-path "/")
+        p (clojure.string/)
+        found #(< -1 (.indexOf % p))]
+    (first (filter found possible-paths))))
+
+
 (defn module-name [absolute-path]
   (let [segments (clojure.string/split (app-path absolute-path) #"/")]
     (match [segments]
@@ -64,10 +73,13 @@
     "mixin" "helper"})
 
 (defn register-path [absolute-path]
-  "add a two-way mapping between the module name and the file path"
+  "add the path to the global set of known paths.
+  add a two-way mapping between the module name and the file path"
   (let [[module-type m] (module-name absolute-path)]
+    (swap! all-paths #(conj % absolute-path))
     (if (contains? valid-module-types module-type)
-      (do (swap! found-module-types #(conj % module-type))
-          (swap! path-to-module #(assoc % absolute-path m))
-          (swap! module-to-path #(assoc % m absolute-path))))))
+      (do
+        (swap! found-module-types #(conj % module-type))
+        (swap! path-to-module #(assoc % absolute-path m))
+        (swap! module-to-path #(assoc % m absolute-path))))))
 
