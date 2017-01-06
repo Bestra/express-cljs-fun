@@ -48,14 +48,39 @@
         [_ s] (.split abs-path splitter)]
     s))
 
-(defn import-path->file-path [import-path app-name possible-paths]
+(defn template-module->rendering-context
+  "given template:foo/bar go to controller:foo/bar,
+   and given template:components/foo/bar go to component:foo/bar"
+  [template-module]
+  (let [segments (clojure.string/split template-module #"[:/]")]
+    (match [segments]
+           [["template" "components" & paths]]
+           (str "component:"
+                (clojure.string/join "/" paths))
+           [["template" & paths]]
+           (str "controller:"
+                (clojure.string/join "/" paths)))))
+
+(defn rendering-context->template-module
+  "given controller:foo/bar go to template:foo/bar,
+   and given component:foo/bar go to template:components/foo/bar"
+  [context-module]
+  (let [segments (clojure.string/split context-module #"[:]")]
+    (match [segments]
+           [["component" & paths]]
+           (str "template:components/" (clojure.string/join "/" paths))
+           [["controller" & paths]]
+           (str "template:" (clojure.string/join "/" paths)))))
+
+(defn import-path->file-path
   "given something like 'my-app/models/foo' where 'my-app' is the
    application name, translate that path into '/path/to/my-app/app/models/foo'"
+  [import-path app-name possible-paths]
   (let [[name & rest] (.split import-path "/")
-        p (clojure.string/)
+        p (clojure.string/join "/" (concat '("app") rest))
         found #(< -1 (.indexOf % p))]
-    (first (filter found possible-paths))))
-
+    (if (= name app-name)
+      (first (filter found possible-paths)))))
 
 (defn module-name [absolute-path]
   (let [segments (clojure.string/split (app-path absolute-path) #"/")]
@@ -72,9 +97,10 @@
     "view" "model" "adapter" "serializer"
     "mixin" "helper"})
 
-(defn register-path [absolute-path]
+(defn register-path
   "add the path to the global set of known paths.
   add a two-way mapping between the module name and the file path"
+  [absolute-path]
   (let [[module-type m] (module-name absolute-path)]
     (swap! all-paths #(conj % absolute-path))
     (if (contains? valid-module-types module-type)
@@ -82,4 +108,3 @@
         (swap! found-module-types #(conj % module-type))
         (swap! path-to-module #(assoc % absolute-path m))
         (swap! module-to-path #(assoc % m absolute-path))))))
-

@@ -5,8 +5,9 @@
 (def path (nodejs/require "path"))
 (def fs (nodejs/require "fs"))
 
-(defn get-source-files [dir]
+(defn get-source-files
   "recursively walks dir and returns absolute paths for all hbs and js files"
+  [dir]
   (let [all-files (walk (.normalize path dir))
         file-types #{".hbs" ".js"}]
     (js->clj (->> all-files

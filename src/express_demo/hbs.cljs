@@ -62,7 +62,7 @@
 
 (s/def ::position (s/keys :req-un [::line ::column]))
 (s/def ::location (s/keys :req-un [::start ::end]))
-(s/def ::binding (s/keys :req-un [::path ::file-path ::type ::location]))
+(s/def ::binding (s/keys :req-un [::path ::module-name ::type ::location]))
 
 (defn location-map [node]
   (let [get-loc #(js->clj (aget node "loc" %) :keywordize-keys true)]
@@ -73,16 +73,16 @@
   {:path-name (.-original path-node)
     :location (location-map path-node)})
 
-(defn node->binding [path-node file-path]
+(defn node->binding [path-node module-name]
   {:path (.-original path-node)
-   :file-path file-path
+   :module-name module-name
    :type "binding"
    :location (js->clj (.. path-node -loc) :keywordize-keys true)})
 
-(defn extract-bindings [str file-path]
+(defn extract-bindings [str module-name]
   (->> str
        (extract-paths)
-       (map #(node->binding % file-path))
+       (map #(node->binding % module-name))
        (filter (complement is-helper?))))
 
 (defn ast [entry]
@@ -122,8 +122,9 @@
                          (map node->invocation))]
     (update-in entry [:invocations] #(apply conj % invocations))))
 
-(defn process-actions [entry]
+(defn process-actions
   "could be element modifiers or subexpressions"
+  [entry]
   entry)
 
 (defn process-bound-paths [entry]
@@ -141,16 +142,16 @@
 
     (update-in entry [:bindings] #(into [] bindings))))
 
-(defn create-template-entry [str file-path registry]
-  (-> (create-entry str file-path)
+(defn create-template-entry [str module-name registry]
+  (-> (create-entry str module-name)
       (process-mustache-invocations registry)
       (process-block-invocations registry)
       (process-actions)
       (process-bound-paths)))
 
-(defn create-entry [template-str file-path]
+(defn create-entry [template-str module-name]
   {:src template-str
-   :file-path file-path
+   :module-name module-name
    :invocations []
    :actions []
    :bindings []})
@@ -171,8 +172,7 @@
   {{item.name}}
 {{/each}}")
 
-(def test-registry {"component:another-component" "/foo/component"
-                    "component:some-component" "/foo/component"})
-(def test-entry (create-entry test-hbs-file "foo"))
-(create-template-entry test-hbs-file "/Users/foo" test-registry)
+;; (def test-registry {"component:another-component" "/foo/component"
+;;                     "component:some-component" "/foo/component"})
+;; (def test-entry (create-entry test-hbs-file "foo"))
 
