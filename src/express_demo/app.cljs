@@ -19,5 +19,9 @@
   (doseq [root @config/app-roots
           src-file (files/get-source-files root)]
     (registry/register-path src-file))
-  (create-template-entries @registry/module-to-path))
+  (println "Creating template entries")
+  (create-template-entries @registry/module-to-path)
+  (println "Creating template graph")
+  (swap! template-graph/template-graph
+         #(template-graph/init-templates (vals @registry/path-to-entry))))
 
