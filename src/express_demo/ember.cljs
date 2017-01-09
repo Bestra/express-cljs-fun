@@ -36,28 +36,44 @@
 (defn parse-js-file [path]
   (parse-str (files/read-file path)))
 
-(defn extract-node-paths
+(defn extract-all-node-paths
   "extracts all NodePath objects of a given type from the ast"
   [node-type recurse? ast]
+  (extract-node-paths node-type recurse? #(identity true) ast))
+
+(defn extract-node-paths
+  "extracts all NodePath objects of a given type that pass the filter-fn from the ast"
+  [node-type recurse? filter-fn ast]
   (let [collector #js []
         visitor-name (str "visit" node-type)
         cb (js-obj visitor-name
                    (fn [a-path] (this-as this
-                                  (do (.push collector a-path)
+                                  (do (if (filter-fn a-path) (.push collector a-path))
                                       (if recurse? (.traverse this a-path) false)))))]
     (do
       (.visit recast ast cb)
       collector)))
 
 (defn is-get-or-set? [get-or-set a-path]
+  (println (str (js-keys (aget a-path "node" "callee")) (aget a-path "node" "callee" "type")))
   (let [callee (aget a-path "node" "callee")
         callee-type (aget callee "object" "type")
         property-name (aget callee "property" "name")]
     (and (= callee-type "ThisExpression")
-         (= property-name get-or-set))) )
+         (= property-name get-or-set))))
+
+(defn extract-gets-sets
+  "extract NodePaths objects that wrap the proper CallExpression"
+  [ast]
+  (extract-node-paths "CallExpression"
+                      true
+                      #(= "MemberExpression"
+                          (aget % "node" "callee" "type"))
+                      ast))
 
 (defn extract-gets [ast entry]
-  (let [calls (extract-node-paths "CallExpression" true ast)]
+  "TODO: extract only CallExpressions whose callee type is a MemberExpression"
+  (let [calls (extract-gets-sets ast)]
     (update entry
             :property-gets
             #(apply conj % (->> calls
@@ -70,7 +86,7 @@
      :key (aget node "arguments" 0 "value")}))
 
 (defn extract-sets [ast entry]
-  (let [calls (extract-node-paths "CallExpression" true ast)]
+  (let [calls (extract-gets-sets ast)]
     (update entry
             :property-sets
             #(apply conj % (->> calls
@@ -85,12 +101,12 @@
 (def test-var nil)
 
 (defn export-props [ast]
-  (let [export (first (extract-node-paths "ExportDefaultDeclaration" false ast))
-        export-args (try-get export "node" "declaration" "arguments")]
-    (if (and (< 0 (aget export-args "length"))
-             (aget (last export-args) "properties"))
-      (or (aget (last export-args) "properties") [])
-      nil)))
+  (let [export (first (extract-all-node-paths "ExportDefaultDeclaration" false ast))]
+    (if-let [export-args (try-get export "node" "declaration" "arguments")]
+      (if (and (< 0 (aget export-args "length"))
+               (aget (last export-args) "properties"))
+        (or (aget (last export-args) "properties") [])
+        nil))))
 
 (defn extract-prototype-assignments [ast entry]
   (if-let [props (export-props ast)]
@@ -109,5 +125,5 @@
          (extract-gets ast)
          (extract-sets ast))))
 
-;; (def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/admin-role/component.js")
+(def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/select-2/component.js")
 (create-ember-entry sample-js-path)
