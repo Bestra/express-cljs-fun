@@ -28,14 +28,18 @@
                       "All"})
 
 (def ember-helper-paths #{
-                    "action"
-                    "if"
-                    "unless"
-                    "else"
-                    "concat"
-                    "each"
-                    "with"
-                    "yield"
+                          "action"
+                          "if"
+                          "unless"
+                          "else"
+                          "concat"
+                          "each"
+                          "with"
+                          "yield"
+                          "not"
+                          "hash"
+                          "eq"
+                          "can"
                     })
 (def htmlbars (nodejs/require "htmlbars/dist/cjs/htmlbars-syntax"))
 (def util (nodejs/require "util"))
@@ -60,7 +64,11 @@
 (def extract-paths (partial all-nodes-of-type "PathExpression"))
 
 
+(s/def ::line nat-int?)
+(s/def ::column nat-int?)
 (s/def ::position (s/keys :req-un [::line ::column]))
+(s/def ::start ::position)
+(s/def ::end ::position)
 (s/def ::location (s/keys :req-un [::start ::end]))
 (s/def ::binding (s/keys :req-un [::path ::module-name ::type ::location]))
 
@@ -69,22 +77,6 @@
     {:start (get-loc "start")
      :end (get-loc "end")}))
 
-(defn node->bound-path [path-node]
-  {:path-name (.-original path-node)
-    :location (location-map path-node)})
-
-(defn node->binding [path-node module-name]
-  {:path (.-original path-node)
-   :module-name module-name
-   :type "binding"
-   :location (js->clj (.. path-node -loc) :keywordize-keys true)})
-
-(defn extract-bindings [str module-name]
-  (->> str
-       (extract-paths)
-       (map #(node->binding % module-name))
-       (filter (complement is-helper?))))
-
 (defn ast [entry]
   (parse? (:src entry)))
 
@@ -92,35 +84,60 @@
   (let [possible-name (str "component:" (.. block-or-mustache -path -original))]
     (contains? registry possible-name)))
 
-(defn is-helper? [binding]
-  true)
+(defn node->bound-path [path-node]
+  {:path (.-original path-node)
+   :type "bound-path"
+   :location (location-map path-node)})
+
+(defn node->block-params
+  "block params don't have their own location information so they steal
+  it from their parent program node"
+  [block-node]
+  (let [node (aget block-node "program")
+        loc (location-map node)
+        params (aget node "blockParams")]
+    (map (fn [p] {:path p :loc loc}) params)))
 
 ;; the attr pairs need to be turned into 'set' nodes too
 (defn node->invocation [node]
-  (let [path (node->bound-path (.. node -path))
-        i {:name (:path-name path)
-           :location (location-map node)
-           :path path
-           :attrs (.. node -hash -pairs)}]
-    (if (.. node -program)
-      (assoc i :block-params (.. node -program -blockParams))
-      i)))
+  (let [n->hash-pair (fn [n]
+                       {:key (aget n "key")
+                        :location (location-map n)})
+        path (node->bound-path (.. node -path))]
+    {:name (:path path)
+       :location (location-map node)
+       :path path
+       :attrs (map n->hash-pair (.. node -hash -pairs))}))
 
 (defn process-mustache-invocations [entry registry]
-  (let [invocations (->> entry
-                         ast
-                         (all-nodes-of-type "MustacheStatement")
-                         (filter #(is-component? % registry))
-                         (map node->invocation))]
-    (update-in entry [:invocations] #(apply conj % invocations))))
+  (update-in entry
+             [:invocations]
+             (fn [i]
+               (apply conj i (->> entry
+                                  ast
+                                  (all-nodes-of-type "MustacheStatement")
+                                  (filter #(is-component? % registry))
+                                  (map node->invocation))))))
 
 (defn process-block-invocations [entry registry]
-  (let [invocations (->> entry
-                         ast
-                         (all-nodes-of-type "BlockStatement")
-                         (filter #(is-component? % registry))
-                         (map node->invocation))]
-    (update-in entry [:invocations] #(apply conj % invocations))))
+  (update-in entry
+             [:invocations]
+             (fn [i]
+               (apply conj i (->> entry
+                                  ast
+                                  (all-nodes-of-type "BlockStatement")
+                                  (filter #(is-component? % registry))
+                                  (map node->invocation))))))
+
+(defn process-block-params [entry]
+  (update-in entry
+             [:block-params]
+             (fn [i]
+               (apply conj i (->> entry
+                                  ast
+                                  (all-nodes-of-type "BlockStatement")
+                                  (mapcat node->block-params)
+                                  (remove empty?))))))
 
 (defn process-actions
   "could be element modifiers or subexpressions"
@@ -138,7 +155,8 @@
                        (map node->bound-path))
         bindings (->> all-paths
                       (remove #(contains? invocation-paths %))
-                      (remove #(contains? ember-helper-paths (:path-name %))))]
+                      (remove #(re-find #"-" (:path %)))
+                      (remove #(contains? ember-helper-paths (:path %))))]
 
     (update-in entry [:bindings] #(into [] bindings))))
 
@@ -146,6 +164,7 @@
   (-> (create-entry str module-name)
       (process-mustache-invocations registry)
       (process-block-invocations registry)
+      (process-block-params)
       (process-actions)
       (process-bound-paths)))
 
@@ -153,6 +172,7 @@
   {:src template-str
    :module-name module-name
    :invocations []
+   :block-params []
    :actions []
    :bindings []})
 
@@ -172,7 +192,9 @@
   {{item.name}}
 {{/each}}")
 
-;; (def test-registry {"component:another-component" "/foo/component"
-;;                     "component:some-component" "/foo/component"})
-;; (def test-entry (create-entry test-hbs-file "foo"))
+(def test-registry {"component:another-component" "/foo/component"
+                    "component:some-component" "/foo/component"})
+
+(:block-params
+ (create-template-entry test-hbs-file "template:components/foo" test-registry))
 

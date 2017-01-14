@@ -7,8 +7,9 @@
 (def babel (nodejs/require "babel-core"))
 
 
-(defn base-entry []
-  {:property-sets []
+(defn base-entry [m]
+  {:module-name m
+   :property-sets []
    :property-gets []
    :actions []
    })
@@ -55,7 +56,6 @@
       collector)))
 
 (defn is-get-or-set? [get-or-set a-path]
-  (println (str (js-keys (aget a-path "node" "callee")) (aget a-path "node" "callee" "type")))
   (let [callee (aget a-path "node" "callee")
         callee-type (aget callee "object" "type")
         property-name (aget callee "property" "name")]
@@ -72,18 +72,20 @@
                       ast))
 
 (defn extract-gets [ast entry]
-  "TODO: extract only CallExpressions whose callee type is a MemberExpression"
   (let [calls (extract-gets-sets ast)]
     (update entry
             :property-gets
             #(apply conj % (->> calls
                                 (filter (partial is-get-or-set? "get"))
-                                (map node->property-get))))))
+                                (map (partial node->property-get-or-set "get")))))))
 
-(defn node->property-get [node-path]
+(defn node->property-get-or-set
+  "creates nodes whose :type is either ember-get or ember-set"
+  [kwd node-path]
   (let [node (aget node-path "node")]
     {:location (location-map node)
-     :key (aget node "arguments" 0 "value")}))
+     :type (str "ember-" kwd)
+     :path (aget node "arguments" 0 "value")}))
 
 (defn extract-sets [ast entry]
   (let [calls (extract-gets-sets ast)]
@@ -91,12 +93,12 @@
             :property-sets
             #(apply conj % (->> calls
                                 (filter (partial is-get-or-set? "set"))
-                                (map node->property-get))))))
+                                (map (partial node->property-get-or-set "set")))))))
 
 (defn node->prototype-assignment [node]
   {:location (location-map node)
-   :set-type "prototype-assignment"
-   :key (aget node "key" "name")})
+   :type "prototype-assignment"
+   :path (aget node "key" "name")})
 
 (def test-var nil)
 
@@ -108,22 +110,24 @@
         (or (aget (last export-args) "properties") [])
         nil))))
 
+;; TODO: this method skips over instances where the defualt export is not an
+;; Ember.Something.extend({}) literal
 (defn extract-prototype-assignments [ast entry]
   (if-let [props (export-props ast)]
     (let [all-assignments (->> props
                           (map node->prototype-assignment))
-          assignments (remove #(= "actions" (:key %)) all-assignments)]
+          assignments (remove #(= "actions" (:path %)) all-assignments)]
       (update entry
               :property-sets
               #(apply conj % assignments)))
     entry))
 
-(defn create-ember-entry [file-path]
+(defn create-ember-entry [file-path module-name]
   (let [ast (parse-js-file file-path)]
-    (->> (base-entry)
+    (->> (base-entry module-name)
          (extract-prototype-assignments ast)
          (extract-gets ast)
          (extract-sets ast))))
 
-(def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/select-2/component.js")
-(create-ember-entry sample-js-path)
+(def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/paper-version-picker/component.js")
+(create-ember-entry sample-js-path "component:paper-version-picker")

@@ -24,6 +24,12 @@
   "maps absolute paths to actual entries"
   (atom {}))
 
+(defn reset-all! []
+  (reset! all-paths #{})
+  (reset! path-to-module {})
+  (reset! module-to-path {})
+  (reset! path-to-entry {}))
+
 (defn singularize [name]
   (.substring name 0 (dec  (.-length name))))
 
