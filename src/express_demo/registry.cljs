@@ -7,6 +7,8 @@
 (nodejs/enable-util-print!)
 (def path (nodejs/require "path"))
 
+(defn module-type [str]
+  (first (.split str ":")))
 
 (def all-paths
   "all file paths known to the app"
@@ -23,6 +25,14 @@
 (def path-to-entry
   "maps absolute paths to actual entries"
   (atom {}))
+
+(defn find-entry
+  "finds an entry in the registry based on an absolute
+  path or a module name"
+  [str]
+  (if (= (first str) "/")
+    (@path-to-entry str)
+    (@path-to-entry (@module-to-path str))))
 
 (defn reset-all! []
   (reset! all-paths #{})

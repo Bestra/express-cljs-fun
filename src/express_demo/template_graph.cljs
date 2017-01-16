@@ -27,7 +27,7 @@
 
 (defn add-template-entry
   "adds the template to the given graph.  For each invocation, check if the template and
-  the renderding context exist, and connect them to the current template.
+  the rendering context exist, and connect them to the current template.
   connect any partials to the current template"
   [g t reg]
   (let [parent (:module-name t)
@@ -36,7 +36,7 @@
                                    (filterv #(contains? reg %) child-pair))
                                  possible-children)
         partial-edges (mapv (fn [p]
-                             [parent (str "template:" p)])
+                              [[parent (str "template:" p)]])
                             (set (map :name (:partials t))))
         invoked-child-edges (mapv (fn [child-pair]
                             (match [child-pair]
