@@ -183,6 +183,10 @@
                                                   ["template:components/paper-control-bar"
                                                    "component:paper-version-picker"
                                                    "template:components/paper-version-picker"]))
+(defn index-prop-nodes [nodes]
+  (let [type-groups (group-by :type nodes)
+        ])
+  )
 
 (def connected-graph (-> sample-prop-graph
                          (connect-binding-nodes sample-template-graph)

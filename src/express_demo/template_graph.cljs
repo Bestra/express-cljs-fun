@@ -21,25 +21,34 @@
     context-pairs))
 
 (defn init-templates [entries]
-  (reduce #(add-template-entry %1 %2 @registry/module-to-path) (graph/digraph) entries))
+  (reduce #(add-template-entry %1 %2 @registry/module-to-path)
+          (graph/digraph)
+          entries))
 
 (defn add-template-entry
   "adds the template to the given graph.  For each invocation, check if the template and
-  the renderding context exist, and connect them to the current template"
+  the renderding context exist, and connect them to the current template.
+  connect any partials to the current template"
   [g t reg]
   (let [parent (:module-name t)
         possible-children (template-invocations->context-pairs t)
         registered-children (map (fn [child-pair]
-                                   (filterv #(contains? reg %) child-pair)
-                                   )
+                                   (filterv #(contains? reg %) child-pair))
                                  possible-children)
-        child-edges (mapv (fn [child-pair]
+        partial-edges (mapv (fn [p]
+                             [parent (str "template:" p)])
+                            (set (map :name (:partials t))))
+        invoked-child-edges (mapv (fn [child-pair]
                             (match [child-pair]
                                    [[c foo]] [[parent c] [c foo]]
                                    [[x]] [[parent x]]))
 
-                          registered-children)]
+                                  registered-children)
+        all-edges (concat partial-edges invoked-child-edges)]
+    (println all-edges)
+    (apply graph/build-graph `[~g ~parent ~@(apply concat all-edges)])))
 
-    (apply graph/build-graph `[~g ~parent ~@(apply concat child-edges)])))
-
-  ;; (graph/build-graph g {parent children})
+(vis/open-graph
+ (add-template-entry (graph/digraph)
+                     (registry/find-entry "template:components/journal-thumbnail")
+                     @registry/module-to-path))

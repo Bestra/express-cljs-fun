@@ -40,6 +40,8 @@
                           "hash"
                           "eq"
                           "can"
+                          "unbound"
+                          "partial"
                     })
 (def htmlbars (nodejs/require "htmlbars/dist/cjs/htmlbars-syntax"))
 (def util (nodejs/require "util"))
@@ -84,10 +86,17 @@
   (let [possible-name (str "component:" (.. block-or-mustache -path -original))]
     (contains? registry possible-name)))
 
+(defn is-partial? [mustache]
+  (= "partial" (aget mustache "path" "original")))
+
 (defn node->bound-path [path-node]
   {:path (.-original path-node)
    :type "bound-path"
    :location (location-map path-node)})
+
+(defn node->partial [node]
+  {:name (.-original (first (.-params node)))
+   :location (location-map node)})
 
 (defn node->block-params
   "block params don't have their own location information so they steal
@@ -105,9 +114,10 @@
                         :location (location-map n)})
         path (node->bound-path (.. node -path))]
     {:name (:path path)
-       :location (location-map node)
-       :path path
-       :attrs (map n->hash-pair (.. node -hash -pairs))}))
+     :location (location-map node)
+     :path path
+     :invocation-type "component"
+     :attrs (map n->hash-pair (.. node -hash -pairs))}))
 
 (defn process-mustache-invocations [entry registry]
   (update-in entry
@@ -118,6 +128,16 @@
                                   (all-nodes-of-type "MustacheStatement")
                                   (filter #(is-component? % registry))
                                   (map node->invocation))))))
+
+(defn process-partials [entry]
+  (update-in entry
+             [:partials]
+             (fn [i]
+               (apply conj i (->> entry
+                                  ast
+                                  (all-nodes-of-type "MustacheStatement")
+                                  (filter #(is-partial? %))
+                                  (map node->partial))))))
 
 (defn process-block-invocations [entry registry]
   (update-in entry
@@ -154,9 +174,9 @@
                        (all-nodes-of-type "PathExpression")
                        (map node->bound-path))
         bindings (->> all-paths
+                      (remove #(contains? ember-helper-paths (:path %)))
                       (remove #(contains? invocation-paths %))
-                      (remove #(re-find #"-" (:path %)))
-                      (remove #(contains? ember-helper-paths (:path %))))]
+                      (remove #(re-find #"-" (:path %))))]
 
     (update-in entry [:bindings] #(into [] bindings))))
 
@@ -165,6 +185,7 @@
       (process-mustache-invocations registry)
       (process-block-invocations registry)
       (process-block-params)
+      (process-partials)
       (process-actions)
       (process-bound-paths)))
 
@@ -172,6 +193,7 @@
   {:src template-str
    :module-name module-name
    :invocations []
+   :partials []
    :block-params []
    :actions []
    :bindings []})
@@ -182,6 +204,7 @@
 {{#some-component foo=bar as |stuff|}}
   There's {{stuff}} here.
 {{/some-component}}
+{{partial \"foo-bar\"}}
 
 <button {{action \"clicked\"}}>Click me</button>
 {{another-component
@@ -195,6 +218,5 @@
 (def test-registry {"component:another-component" "/foo/component"
                     "component:some-component" "/foo/component"})
 
-(:block-params
- (create-template-entry test-hbs-file "template:components/foo" test-registry))
+(:invocations (create-template-entry test-hbs-file "template:components/foo" test-registry))
 
