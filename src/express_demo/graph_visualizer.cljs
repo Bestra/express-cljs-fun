@@ -20,8 +20,8 @@
     (let [sb (atom "[")
           append-sb (partial append-string-atom sb)]
       (doseq [[k v] attrs]
-        (when (pos? (.length (str v)))
-          (when (< 1 (.length @sb))
+        (when (pos? (.-length (str v)))
+          (when (< 1 (.-length @sb))
             (append-sb \,))
           (append-sb (str \"
                           (dot-esc (if (keyword? k) (name k) (str k)))
