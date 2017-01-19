@@ -104,13 +104,26 @@
 
 (def test-var nil)
 
-(defn export-props [ast]
+(defn export-props
+  "extract the properties from the last argument of the default export"
+  [ast]
   (let [export (first (extract-all-node-paths "ExportDefaultDeclaration" false ast))]
     (if-let [export-args (try-get export "node" "declaration" "arguments")]
       (if (and (< 0 (aget export-args "length"))
                (aget (last export-args) "properties"))
         (or (aget (last export-args) "properties") [])
         nil))))
+
+(defn export-mixin-paths
+  "extract the identifiers for any mixins from the default export"
+  [ast]
+  (let [export (first (extract-all-node-paths "ExportDefaultDeclaration" false ast))]
+    (if-let [export-args (try-get export "node" "declaration" "arguments")]
+      (->> export-args
+           (filter #(= (aget % "type") "Identifier"))
+           (map #(aget % "name"))
+           (map #(find-default-import-path-for-identifier ast %)))
+      [])))
 
 ;; TODO: this method skips over instances where the defualt export is not an
 ;; Ember.Something.extend({}) literal
@@ -159,26 +172,34 @@
   identifier"
   [ast entry]
   (let [cns (extract-constructor-identifiers ast)
+        abs-path (fn [p]
+                   (if p
+                     (registry/import-path->file-path p
+                                                      @config/app-name
+                                                      @registry/all-paths)))
         ember-class? (= (first cns) "Ember")
         superclass-import-path (find-default-import-path-for-identifier ast (first cns))
         superclass-path (if-not ember-class?
                           (if superclass-import-path
-                            (registry/import-path->file-path superclass-import-path
-                                                             @config/app-name
-                                                             @registry/all-paths)
-                            nil)
-                          nil)]
-  (assoc entry :module-info {:constructor-name (clojure.string/join "." (drop-last cns))
-                             :is-ember-subclass? ember-class?
-                             :superclass-path  superclass-path
-                             :mixin-paths []})))
+                            (abs-path
+                             superclass-import-path)))
+        mixin-paths (->> ast
+                         export-mixin-paths
+                         (map #(abs-path %))
+                         (remove nil?))]
+    (assoc entry
+           :module-info
+           {:constructor-name (clojure.string/join "." (drop-last cns))
+            :is-ember-subclass? ember-class?
+            :superclass-path  superclass-path
+            :mixin-paths mixin-paths})))
 
 (defn extract-constructor-identifiers [ast]
-  (let [export-path (first (extract-all-node-paths "ExportDefaultDeclaration" false ast))
-        export-declaration (aget export-path "node" "declaration")]
-    (if-let [callee (.-callee export-declaration)]
-      (identifier-segments callee)
-      nil)))
+  (if-let [export-path (first (extract-all-node-paths "ExportDefaultDeclaration" false ast))]
+    (if-let [export-declaration (aget export-path "node" "declaration")]
+      (if-let [callee (.-callee export-declaration)]
+        (identifier-segments callee)
+        nil))))
 
 ;; (-> "import Foo from \"tahi/foo/component\"
 ;;      export default Foo.extend({bar: 42})"

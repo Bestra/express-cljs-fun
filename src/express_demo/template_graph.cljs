@@ -37,6 +37,9 @@
                                  possible-children)
         superclass-edge (if-let [sp (get-in t [:module-info :superclass-path])]
                           [[[(@registry/path-to-module sp) parent]]])
+        mixin-edges (mapv (fn [p]
+                            [[(@registry/path-to-module p) parent]])
+                          (get-in t [:module-info :mixin-paths]))
         partial-edges (mapv (fn [p]
                               [[parent (str "template:" p)]])
                             (set (map :name (:partials t))))
@@ -46,7 +49,7 @@
                                    [[x]] [[parent x]]))
 
                                   registered-children)
-        all-edges (concat partial-edges invoked-child-edges superclass-edge)]
+        all-edges (concat partial-edges invoked-child-edges superclass-edge mixin-edges)]
     (apply graph/build-graph `[~g ~parent ~@(apply concat all-edges)])))
 
 (vis/open-graph
