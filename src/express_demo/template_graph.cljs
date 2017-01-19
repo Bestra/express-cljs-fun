@@ -35,6 +35,8 @@
         registered-children (map (fn [child-pair]
                                    (filterv #(contains? reg %) child-pair))
                                  possible-children)
+        superclass-edge (if-let [sp (get-in t [:module-info :superclass-path])]
+                          [[[(@registry/path-to-module sp) parent]]])
         partial-edges (mapv (fn [p]
                               [[parent (str "template:" p)]])
                             (set (map :name (:partials t))))
@@ -44,8 +46,7 @@
                                    [[x]] [[parent x]]))
 
                                   registered-children)
-        all-edges (concat partial-edges invoked-child-edges)]
-    (println all-edges)
+        all-edges (concat partial-edges invoked-child-edges superclass-edge)]
     (apply graph/build-graph `[~g ~parent ~@(apply concat all-edges)])))
 
 (vis/open-graph

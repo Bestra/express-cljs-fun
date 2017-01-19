@@ -1,6 +1,8 @@
 (ns express-demo.ember
   (:require [cljs.nodejs :as nodejs]
-             [express-demo.files :as files]))
+            [express-demo.files :as files]
+            [express-demo.registry :as registry]
+            [express-demo.config :as config]))
 
 (nodejs/enable-util-print!)
 (def recast (nodejs/require "recast"))
@@ -123,11 +125,64 @@
     entry))
 
 (defn create-ember-entry [file-path module-name]
+  "This function is the driver in the namespace"
   (let [ast (parse-js-file file-path)]
     (->> (base-entry module-name)
+         (create-module-info ast)
          (extract-prototype-assignments ast)
          (extract-gets ast)
          (extract-sets ast))))
 
-(def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/paper-version-picker/component.js")
-(create-ember-entry sample-js-path "component:paper-version-picker")
+;; (def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/paper-version-picker/component.js")
+;; (create-ember-entry sample-js-path "component:paper-version-picker")
+
+(defn identifier-segments
+  [member-expression]
+  (reverse
+   (loop [exp (aget member-expression "object")
+          acc [(aget member-expression "property" "name")]]
+     (if (= (aget exp "type") "MemberExpression")
+       (recur (aget exp "object")
+              (conj acc (aget exp "property" "name")))
+       (conj acc (aget exp "name"))))))
+
+(defn find-default-import-path-for-identifier [ast name]
+  (if-let [path (first
+              (filter (fn [n]
+                        (= name (aget n "value" "local" "name")))
+                      (extract-all-node-paths "ImportDefaultSpecifier" false ast)))]
+    (aget path "parentPath" "node" "source" "value")))
+
+(defn create-module-info
+  "For now this makes some naive assumptions but eh.
+  Ember classes always start with Ember.*, and any superclass is a single
+  identifier"
+  [ast entry]
+  (let [cns (extract-constructor-identifiers ast)
+        ember-class? (= (first cns) "Ember")
+        superclass-import-path (find-default-import-path-for-identifier ast (first cns))
+        superclass-path (if-not ember-class?
+                          (if superclass-import-path
+                            (registry/import-path->file-path superclass-import-path
+                                                             @config/app-name
+                                                             @registry/all-paths)
+                            nil)
+                          nil)]
+  (assoc entry :module-info {:constructor-name (clojure.string/join "." (drop-last cns))
+                             :is-ember-subclass? ember-class?
+                             :superclass-path  superclass-path
+                             :mixin-paths []})))
+
+(defn extract-constructor-identifiers [ast]
+  (let [export-path (first (extract-all-node-paths "ExportDefaultDeclaration" false ast))
+        export-declaration (aget export-path "node" "declaration")]
+    (if-let [callee (.-callee export-declaration)]
+      (identifier-segments callee)
+      nil)))
+
+;; (-> "import Foo from \"tahi/foo/component\"
+;;      export default Foo.extend({bar: 42})"
+;;     (parse-str)
+;;     (create-module-info {}))
+
+    ;; (registry/import-path->file-path "tahi" #{"app/foo/component.js"}))
