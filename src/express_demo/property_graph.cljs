@@ -4,12 +4,32 @@
             [loom.graph :as graph]
             [express-demo.registry :as registry]
             [clojure.spec :as s]
+            [clojure.spec.test :as stest]
             [cljs.core.match :refer-macros [match]]
             [express-demo.graph-visualizer :as vis]))
+
+(def progress (nodejs/require "progress"))
+
+(def progress-bar (progress. ":bar" #js{"total" 10}))
+
+(defn print-out [s]
+  (.write (.-stdout nodejs/process) s))
+
+
 (nodejs/enable-util-print!)
 (s/fdef create-graph-nodes
         :args (s/cat :entry map? :nodes map?)
         :ret map?)
+
+(s/def ::path string?)
+(s/def ::prop-node (s/keys ::req-un [::type ::path ::src-module ::start]
+                           ::opt-un [::loc]))
+
+(s/fdef prop-node
+        :args (s/cat
+               :entry (s/keys :req-un [::module-name])
+               :node (s/keys :req-un [::type ::path ::location]))
+        :ret (s/keys ::req-un [::type ::path ::src-module ::start]))
 
 (defn prop-node [entry node]
   {:type (:type node)
@@ -23,6 +43,7 @@
   {:type "block-param"
    :path (first (.split (:path node) "."))
    :src-module (:module-name entry)
+   :start (get-in node [:loc :start])
    :loc (:loc node)})
 
 (defn invocation->i-nodes [e invocation]
@@ -34,9 +55,11 @@
           :start (get-in attr [:location :start])})
        (:attrs invocation)))
 
-(defn entry->nodes [e m mapper key]
-  (let [items (get e key [])]
-    (apply conj m (map #(mapper e %) items))))
+(defn entry->nodes [entry node-set mapper key]
+  (let [items (get entry key [])]
+    (apply conj
+           node-set
+           (map #(mapper entry %) items))))
 
 (defn create-invocations [e m]
   (let [invocations (get e :invocations [])
@@ -95,37 +118,22 @@
 (defn connect-srcs-to-node
   "looks at property source for the given node and tries to find
   the equivalent set or invocation nodes"
-  [pg [src-type src-module-name] node]
+  [indexed-nodes [src-type src-module-name] node]
   ;; (println (:path node) " " src-type " " src-module-name)
-  (let [find-setter #(and (= (:src-module %) src-module-name)
-                          (= (:path %) (:path node))
-                          (re-find #"(ember-set|prototype-assignment)"
-                                   (:type %)))
-        find-invocation #(and (= (:src-module %) src-module-name)
-                              (= (:path %) (:path node))
-                              (= (:invoked-name %) (invocable-name node))
-                              (re-find #"invocation" (:type %)))
+  (let [inv-name (invocable-name node)
+        fetch-type (fn [t] (get-in indexed-nodes [src-module-name t] []))
+        found-setters (fn []
+                        (let [setters (concat (fetch-type "ember-set")
+                                              (fetch-type "prototype-assignment"))]
+                          (filter #(= (:path %) (:path node)) setters)))
+        found-invocations (fn []
+                            (filter #(and (= (:path %) (:path node))
+                                          (= (:invoked-name %) inv-name))
+                                    (fetch-type "invocation")))
         nodes-to-connect (case src-type
-                           :setters (filter find-setter
-                                            (graph/nodes pg))
-                           :invocations (filter find-invocation
-                                                (graph/nodes pg)))]
-    (println "nodes to connect: " nodes-to-connect)
+                           :setters (found-setters)
+                           :invocations (found-invocations))]
     (map (fn [p] [p node]) nodes-to-connect)))
-
-(defn connect-binding-nodes
-  "creates edges between bindings and any applicable setters"
-  [property-graph template-graph]
-  (let [nodes (graph/nodes property-graph)
-        bound-paths (filter #(= "bound-path" (:type %)) nodes)]
-    (reduce (fn [pg n]
-              (let [srcs (cons [:setters (:src-module n)]
-                               (find-property-sources template-graph
-                                                      (:src-module n)))
-                    new-edges (mapcat #(connect-srcs-to-node pg % n) srcs)]
-                (apply graph/add-edges pg new-edges)))
-            property-graph
-            bound-paths)))
 
 (defn contains-start?
   "returns true if the child-locs start is between the parent's start and end"
@@ -139,58 +147,104 @@
          (> (:column child-start) (:column parent-end))) false
     :else true))
 
-(defn find-contained-bindings [block-param template-nodes]
-  (filter #(and (= "bound-path" (:type %))
-                (= (:path block-param) (:path %))
-                (contains-start? (:loc block-param) (:start %))) template-nodes))
+(defn find-contained-bindings [block-param binding-nodes]
+  (filter #(and (= (:path block-param) (:path %))
+                (contains-start? (:loc block-param) (:start %))) binding-nodes))
+
+(defn connect-binding-nodes
+  "creates edges between bindings and any applicable setters"
+  [property-graph template-graph indexed-nodes]
+  (let [bound-paths (get indexed-nodes "bound-path")]
+    (reduce (fn [pg n]
+              (let [srcs (cons [:setters (:src-module n)]
+                               (find-property-sources template-graph
+                                                      (:src-module n)))
+                    new-edges (mapcat #(connect-srcs-to-node indexed-nodes % n) srcs)]
+                (apply graph/add-edges pg new-edges)))
+            property-graph
+            bound-paths)))
+
+(defn connect-getters-to-setters
+  "creates edges between ember-gets and any applicable setters"
+  [property-graph template-graph indexed-nodes]
+  (let [getters (get indexed-nodes "ember-get")]
+    (reduce (fn [pg n]
+              (let [srcs (cons [:setters (:src-module n)]
+                               (find-property-sources template-graph (:src-module n)))
+                    new-edges (mapcat #(connect-srcs-to-node indexed-nodes % n) srcs)]
+                (apply graph/add-edges pg new-edges)))
+            property-graph
+            getters)))
 
 (defn connect-block-params
   "connect block params to paths of the same name contained within their block"
-  [property-graph]
-  (let [nodes (graph/nodes property-graph)
-        block-params (filter #(= "block-param" (:type %)) nodes)]
+  [property-graph indexed-nodes]
+  (let [block-params (get indexed-nodes "block-param")]
     (reduce (fn [pg bp]
-              (let [template-nodes (filter #(= (:src-module %)
-                                               (:src-module bp))
-                                           nodes)
-                    contained-bindings (find-contained-bindings bp
-                                                                template-nodes)
+              (let [contained-bindings (find-contained-bindings
+                                        bp
+                                        (get-in indexed-nodes [(:src-module bp) "bound-path"] []))
                     new-edges (map (fn [cb] [bp cb]) contained-bindings)]
                 (apply graph/add-edges pg new-edges)))
             property-graph
             block-params)))
 
-(defn connect-getters-to-setters
-  "creates edges between ember-gets and any applicable setters"
-  [property-graph template-graph]
-  (let [nodes (graph/nodes property-graph)
-        getters (filter #(= "ember-get" (:type %)) nodes)]
-    (reduce (fn [pg n]
-              (let [srcs (cons [:setters (:src-module n)]
-                               (find-property-sources template-graph (:src-module n)))
-                    new-edges (mapcat #(connect-srcs-to-node pg % n) srcs)]
-                (apply graph/add-edges pg new-edges)))
-            property-graph
-            getters)))
-
-(def sample-template-graph (graph/digraph ["template:components/paper-control-bar"
-                                           "component:paper-version-picker"]
-                                           ["component:paper-version-picker"
-                                           "template:components/paper-version-picker"]
-                                          ))
+(def sample-template-graph (graph/digraph ["template:components/paper-submit/full-submit"
+                                            "component:paper-submit/checklist"]
+                                           ["component:paper-submit/checklist"
+                                            "template:components/paper-submit/checklist"]))
 
 (def sample-prop-graph (add-module-nodes-to-graph (graph/digraph)
-                                                  ["template:components/paper-control-bar"
-                                                   "component:paper-version-picker"
-                                                   "template:components/paper-version-picker"]))
-(defn index-prop-nodes [nodes]
-  (let [type-groups (group-by :type nodes)
-        ])
-  )
+                                                  ["template:components/paper-submit/full-submit"
+                                                   "component:paper-submit/checklist"
+                                                   "template:components/paper-submit/checklist"]))
 
-(def connected-graph (-> sample-prop-graph
-                         (connect-binding-nodes sample-template-graph)
-                         (connect-getters-to-setters sample-template-graph)
-                         (connect-block-params)))
+(defn time-fn [fn & args]
+  (let [start (.hrtime nodejs/process)
+        result (apply fn args)
+        [s ns] (.hrtime nodejs/process start)]
+    (str "took " (* ns 1e-6) "ms")))
 
-(vis/open-graph connected-graph)
+(defn create-connected-graph [prop-graph template-graph index]
+  (let [log-print (fn [x msg]
+                    (println msg)
+                    x)]
+    (-> prop-graph
+        (log-print "Connecting bindings")
+        (connect-binding-nodes template-graph index)
+        (log-print "Connecting getters")
+        (connect-getters-to-setters template-graph index)
+        (log-print "Connecting block params")
+        (connect-block-params index)
+        (log-print "Done"))))
+
+;; (stest/instrument `prop-node)
+
+(def prop-node-graph
+  (add-module-nodes-to-graph
+   (graph/digraph)
+   (keys @express-demo.registry/module-to-path)))
+
+(defn indexed-prop-nodes [prop-graph]
+  (let [nodes (graph/nodes prop-graph)
+        by-module (reduce-kv #(assoc %1 %2 (group-by :type %3))
+                             {}
+                             (group-by :src-module nodes))
+        by-type (group-by :type nodes)]
+    (conj by-module by-type)))
+
+(def indexed-sample-nodes (indexed-prop-nodes sample-prop-graph))
+
+(vis/open-graph (create-connected-graph sample-prop-graph sample-template-graph indexed-sample-nodes))
+
+;; => "took 3.121759ms"
+
+(let [starting-graph (add-module-nodes-to-graph
+                      (graph/digraph)
+                      (keys @express-demo.registry/module-to-path))
+      idx (indexed-prop-nodes starting-graph)]
+  (-> (create-connected-graph starting-graph
+                              @express-demo.template-graph/template-graph
+                              idx)
+      graph/nodes
+      count))

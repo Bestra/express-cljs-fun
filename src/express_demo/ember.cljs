@@ -60,9 +60,12 @@
 (defn is-get-or-set? [get-or-set a-path]
   (let [callee (aget a-path "node" "callee")
         callee-type (aget callee "object" "type")
-        property-name (aget callee "property" "name")]
+        property-name (aget callee "property" "name")
+        arguments (aget a-path "node" "arguments")]
     (and (= callee-type "ThisExpression")
-         (= property-name get-or-set))))
+         (= property-name get-or-set)
+         (= "StringLiteral"
+            (aget "type" (first arguments))))))
 
 (defn extract-gets-sets
   "extract NodePaths objects that wrap the proper CallExpression"
@@ -100,7 +103,7 @@
 (defn node->prototype-assignment [node]
   {:location (location-map node)
    :type "prototype-assignment"
-   :path (aget node "key" "name")})
+   :path (or (aget node "key" "name") (aget node "key" "value"))})
 
 (def test-var nil)
 

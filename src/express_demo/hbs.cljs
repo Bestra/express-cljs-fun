@@ -65,6 +65,7 @@
 
 (def extract-paths (partial all-nodes-of-type "PathExpression"))
 
+extract-paths
 
 (s/def ::line nat-int?)
 (s/def ::column nat-int?)
@@ -218,5 +219,5 @@
 (def test-registry {"component:another-component" "/foo/component"
                     "component:some-component" "/foo/component"})
 
-(:invocations (create-template-entry test-hbs-file "template:components/foo" test-registry))
+;; (:invocations (create-template-entry test-hbs-file "template:components/foo" test-registry))
 

@@ -6,6 +6,7 @@
             [express-demo.ember :as ember]
             [express-demo.template-graph :as template-graph]
             [cljs.nodejs :as nodejs]))
+
 (nodejs/enable-util-print!)
 
 (defn create-template-entries [reg]
@@ -39,3 +40,4 @@
          #(template-graph/init-templates (vals @registry/path-to-entry)))
   (println "Done"))
 
+(start-app)
