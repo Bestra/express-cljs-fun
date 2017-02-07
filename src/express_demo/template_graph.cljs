@@ -56,3 +56,23 @@
  (add-template-entry (graph/digraph)
                      (registry/find-entry "template:components/journal-thumbnail")
                      @registry/module-to-path))
+
+(def fs (nodejs/require "fs"))
+
+(def child-process (nodejs/require "child_process"))
+
+(defn write-statistics-file []
+  (let [g @template-graph
+        node-stats (fn [node]
+                     (let [module-name node
+                           module-type (first (.split node ":"))
+                           inputs (count (graph/predecessors g node))
+                           outputs (count (graph/successors g node))
+                           file-path (@registry/module-to-path node)
+                           line-count (.execSync child-process (str "wc -l " file-path " | awk '{print $1}'"))
+                           ]
+                       (clojure.string/join "," [module-type module-name inputs outputs line-count])))
+        stats (concat "moduleType,moduleName,inputs,outputs,lineCount\n" (map node-stats (graph/nodes g)))]
+    (.writeFileSync fs "template-stats.csv" (clojure.string/join "" stats))))
+
+;; (write-statistics-file)

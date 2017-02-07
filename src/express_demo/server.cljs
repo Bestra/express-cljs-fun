@@ -1,6 +1,7 @@
 (ns express-demo.server
   (:require [cljs.nodejs :as nodejs]
-            [express-demo.parser :as parser]))
+            [express-demo.parser :as parser]
+            [express-demo.app :as app]))
 
 (nodejs/enable-util-print!)
 
@@ -14,7 +15,7 @@
 (defn say-hello! [req res]
   (.send res "Hello world!"))
 
-(defn -main [path-name]
+#_(defn -main [path-name]
   (let [app (express)
         app-path (.join path path-name "app")
         all-files (add-files (get-source-files app-path))]
@@ -23,5 +24,7 @@
                         (do (println "there are " (count @all-source-paths) "files to parse")
                             (println "Server started on port 3000"))))))
 
+(defn -main []
+  (app/start-app))
 (set! *main-cli-fn* -main)
 

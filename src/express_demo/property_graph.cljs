@@ -10,7 +10,7 @@
 
 (def progress (nodejs/require "progress"))
 
-(def progress-bar (progress. ":bar" #js{"total" 10}))
+;; (def progress-bar (progress. ":bar" #js{"total" 10}))
 
 (defn print-out [s]
   (.write (.-stdout nodejs/process) s))
@@ -225,7 +225,9 @@
    (graph/digraph)
    (keys @express-demo.registry/module-to-path)))
 
-(defn indexed-prop-nodes [prop-graph]
+(defn indexed-prop-nodes
+  "indexes the property nodes in a graph by module, then by type"
+  [prop-graph]
   (let [nodes (graph/nodes prop-graph)
         by-module (reduce-kv #(assoc %1 %2 (group-by :type %3))
                              {}
@@ -236,15 +238,17 @@
 (def indexed-sample-nodes (indexed-prop-nodes sample-prop-graph))
 
 (vis/open-graph (create-connected-graph sample-prop-graph sample-template-graph indexed-sample-nodes))
+(count (graph/edges (create-connected-graph sample-prop-graph sample-template-graph indexed-sample-nodes)))
 
 ;; => "took 3.121759ms"
 
-(let [starting-graph (add-module-nodes-to-graph
-                      (graph/digraph)
-                      (keys @express-demo.registry/module-to-path))
-      idx (indexed-prop-nodes starting-graph)]
-  (-> (create-connected-graph starting-graph
-                              @express-demo.template-graph/template-graph
-                              idx)
-      graph/nodes
-      count))
+(def property-graph
+  (atom
+   (let [starting-graph (add-module-nodes-to-graph
+                         (graph/digraph)
+                         (keys @express-demo.registry/module-to-path))
+         idx (indexed-prop-nodes starting-graph)]
+     {:index idx
+      :graph (create-connected-graph starting-graph
+                                     @express-demo.template-graph/template-graph
+                                     idx)})))
