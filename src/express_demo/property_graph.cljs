@@ -242,13 +242,16 @@
 
 ;; => "took 3.121759ms"
 
-(def property-graph
-  (atom
-   (let [starting-graph (add-module-nodes-to-graph
-                         (graph/digraph)
-                         (keys @express-demo.registry/module-to-path))
-         idx (indexed-prop-nodes starting-graph)]
-     {:index idx
-      :graph (create-connected-graph starting-graph
-                                     @express-demo.template-graph/template-graph
-                                     idx)})))
+(def property-graph (atom {}))
+
+(defn setup-property-graph []
+  (reset! property-graph
+          (let [starting-graph (add-module-nodes-to-graph
+                                  (graph/digraph)
+                                  (keys @express-demo.registry/module-to-path))
+                  idx (indexed-prop-nodes starting-graph)]
+              {:index idx
+               :graph (create-connected-graph starting-graph
+                                              @express-demo.template-graph/template-graph
+                                              idx)})))
+

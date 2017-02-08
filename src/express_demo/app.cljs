@@ -5,6 +5,7 @@
             [express-demo.hbs :as hbs]
             [express-demo.ember :as ember]
             [express-demo.template-graph :as template-graph]
+            [express-demo.property-graph :as property-graph]
             [cljs.nodejs :as nodejs]))
 
 (nodejs/enable-util-print!)
@@ -38,6 +39,6 @@
   (println "Creating template graph")
   (swap! template-graph/template-graph
          #(template-graph/init-templates (vals @registry/path-to-entry)))
+  (println "Creating property graph")
+  (property-graph/setup-property-graph)
   (println "Done"))
-
-(start-app)

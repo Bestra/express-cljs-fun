@@ -15,16 +15,17 @@
 (defn say-hello! [req res]
   (.send res "Hello world!"))
 
-#_(defn -main [path-name]
-  (let [app (express)
-        app-path (.join path path-name "app")
-        all-files (add-files (get-source-files app-path))]
-    (.get app "/" say-hello!)
-    (.listen app 3000 (fn []
+(defn get-entry-item [req res]
+  (.send res (.-query req)))
+
+(defn -main [path-name]
+  (let [server (express)]
+    (app/start-app)
+    (.get server "/" say-hello!)
+    (.get server "/entry" get-entry-item)
+    (.listen server 3000 (fn []
                         (do (println "there are " (count @all-source-paths) "files to parse")
                             (println "Server started on port 3000"))))))
 
-(defn -main []
-  (app/start-app))
 (set! *main-cli-fn* -main)
 
