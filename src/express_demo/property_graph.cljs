@@ -240,7 +240,6 @@
 (vis/open-graph (create-connected-graph sample-prop-graph sample-template-graph indexed-sample-nodes))
 (count (graph/edges (create-connected-graph sample-prop-graph sample-template-graph indexed-sample-nodes)))
 
-;; => "took 3.121759ms"
 
 (def property-graph (atom {}))
 
@@ -255,3 +254,10 @@
                                               @express-demo.template-graph/template-graph
                                               idx)})))
 
+(defn entry-item->prop-node [entry entry-item]
+  (let [property-index (:index @property-graph)
+        items (get-in property-index [(:module-name entry) (:type entry-item)])
+        prop (first (filter (fn [n]
+                              (= (:start n) (get-in entry-item [:location :start])))
+                            items))]
+    prop))

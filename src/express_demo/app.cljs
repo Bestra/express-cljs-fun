@@ -42,3 +42,15 @@
   (println "Creating property graph")
   (property-graph/setup-property-graph)
   (println "Done"))
+
+(defn entry-item->prop-node [entry entry-item]
+  (let [property-index (:index @property-graph/property-graph)
+        items (get-in property-index [(:module-name entry) (:type entry-item)])
+        prop (first (filter (fn [n]
+                              (= (:start n) (get-in entry-item [:location :start])))
+                            items))]
+    prop))
+
+#_(let [entry (first (vals @registry/path-to-entry))
+      item (first (:property-sets entry))]
+  (property-graph/entry-item->prop-node entry item))

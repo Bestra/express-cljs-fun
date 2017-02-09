@@ -1,7 +1,8 @@
 (ns express-demo.server
   (:require [cljs.nodejs :as nodejs]
             [express-demo.parser :as parser]
-            [express-demo.app :as app]))
+            [express-demo.app :as app]
+            [express-demo.entry :as entry]))
 
 (nodejs/enable-util-print!)
 
@@ -16,7 +17,16 @@
   (.send res "Hello world!"))
 
 (defn get-entry-item [req res]
-  (.send res (.-query req)))
+  (let [query (.-query req)
+        path (.-path query)
+        line (.-line query)
+        column (.-column query)
+        item (entry/lookup-position (express-demo.registry/find-entry path)
+                                    line
+                                    column)]
+    (println "looking for " path ":" line ":" column)
+    (println (count item))
+    (.send res (clj->js item))))
 
 (defn -main [path-name]
   (let [server (express)]
