@@ -261,3 +261,6 @@
                               (= (:start n) (get-in entry-item [:location :start])))
                             items))]
     prop))
+
+(defn predecessors [entry entry-item]
+  (graph/predecessors @property-graph (entry-item->prop-node entry entry-item)))
