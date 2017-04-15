@@ -140,15 +140,6 @@
               #(apply conj % assignments)))
     entry))
 
-(defn create-ember-entry [file-path module-name]
-  "This function is the driver in the namespace"
-  (let [ast (parse-js-file file-path)]
-    (->> (base-entry module-name)
-         (create-module-info ast)
-         (extract-prototype-assignments ast)
-         (extract-gets ast)
-         (extract-sets ast))))
-
 ;; (def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/paper-version-picker/component.js")
 ;; (create-ember-entry sample-js-path "component:paper-version-picker")
 
@@ -169,6 +160,18 @@
                       (extract-all-node-paths "ImportDefaultSpecifier" false ast)))]
     (aget path "parentPath" "node" "source" "value")))
 
+(defn translate-import-paths
+  "Turns my-app/mixins/foo into an absolute path.  Belongs in the registry"
+  [entry]
+  (let [abs-path (fn [p]
+                   (if p
+                     (registry/import-path->file-path p
+                                                      @config/app-name
+                                                      @registry/all-paths)))]
+    (-> entry
+        (update-in [:module-info :superclass-path] abs-path)
+        (update-in [:module-info :mixin-paths] #(map abs-path %)))))
+
 (defn create-module-info
   "For now this makes some naive assumptions but eh.
   Ember classes always start with Ember.*, and any superclass is a single
@@ -184,18 +187,15 @@
         superclass-import-path (find-default-import-path-for-identifier ast (first cns))
         superclass-path (if-not ember-class?
                           (if superclass-import-path
-                            (abs-path
-                             superclass-import-path)))
+                            {:app superclass-import-path}))
         mixin-paths (->> ast
                          export-mixin-paths
-                         (map #(abs-path %))
-                         (remove nil?))]
+                         (map (fn [p] {:app p})))]
     (assoc entry
-           :module-info
-           {:constructor-name (clojure.string/join "." (drop-last cns))
-            :is-ember-subclass? ember-class?
-            :superclass-path  superclass-path
-            :mixin-paths mixin-paths})))
+           :constructor-name (clojure.string/join "." (drop-last cns))
+           :is-ember-subclass? ember-class?
+           :superclass-path  superclass-path
+           :mixin-paths mixin-paths)))
 
 (defn extract-constructor-identifiers [ast]
   (if-let [export-path (first (extract-all-node-paths "ExportDefaultDeclaration" false ast))]
@@ -203,6 +203,15 @@
       (if-let [callee (.-callee export-declaration)]
         (identifier-segments callee)
         nil))))
+
+(defn create-ember-entry [file-path module-name]
+  "This function is the driver in the namespace"
+  (let [ast (parse-js-file file-path)]
+    (->> (base-entry module-name)
+         (create-module-info ast)
+         (extract-prototype-assignments ast)
+         (extract-gets ast)
+         (extract-sets ast))))
 
 ;; (-> "import Foo from \"tahi/foo/component\"
 ;;      export default Foo.extend({bar: 42})"
