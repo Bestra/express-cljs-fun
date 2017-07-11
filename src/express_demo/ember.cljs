@@ -64,7 +64,7 @@
         arguments (aget a-path "node" "arguments")]
     (and (= callee-type "ThisExpression")
          (= property-name get-or-set)
-         (= "StringLiteral"
+         (= "Literal"
             (aget "type" (first arguments))))))
 
 (defn extract-gets-sets
@@ -213,9 +213,9 @@
          (extract-gets ast)
          (extract-sets ast))))
 
-;; (-> "import Foo from \"tahi/foo/component\"
-;;      export default Foo.extend({bar: 42})"
-;;     (parse-str)
-;;     (create-module-info {}))
+#_(-> "import Foo from \"tahi/foo/component\"
+     export default Foo.extend({bar: 42})"
+      (parse-str)
+      (create-module-info {}))
 
-    ;; (registry/import-path->file-path "tahi" #{"app/foo/component.js"}))
+#_(registry/import-path->file-path "tahi" #{"app/foo/component.js"})
