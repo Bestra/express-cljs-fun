@@ -10,38 +10,46 @@
 
 (nodejs/enable-util-print!)
 
-(defn create-template-entries [reg]
-  (doseq [module-name (filter #(.includes % "template:") (keys reg))]
-    (let [file-path (get reg module-name)
-          src (files/read-file file-path)
-          entry (hbs/create-template-entry src module-name reg)]
-      (swap! registry/path-to-entry #(assoc % file-path entry)))))
+(defn create-template-entries [reg']
+  (reduce (fn [reg module-name]
+            (let [file-path (get-in reg :module-to-path module-name)
+                  src (files/read-file file-path)
+                  entry (hbs/create-template-entry src module-name reg)]
+              (update reg :path-to-entry #(assoc % file-path entry))))
+          reg'
+          (filter #(.includes % "template:") (keys reg'))))
 
-(defn create-ember-entries [reg]
-  (doseq [module-name (remove #(.includes % "template:") (keys reg))]
-    (let [file-path (get reg module-name)
-          entry (ember/create-ember-entry file-path module-name)]
-      (swap! registry/path-to-entry #(assoc % file-path entry)))))
+(defn create-ember-entries [reg']
+  (reduce (fn [reg module-name]
+            (let [file-path (get-in reg :module-to-path module-name)
+                  src (files/read-file file-path)
+                  entry (ember/create-ember-entry src module-name)]
+              (update reg :path-to-entry #(assoc % file-path entry))))
+          reg'
+          (remove #(.includes % "template:") (keys reg'))))
 
-(defn register-all-paths []
-  (doseq [root @config/app-roots
-          src-file (files/get-source-files root)]
-    (registry/register-path src-file)))
+(defn register-all-paths [reg cfg]
+  (let [all-files
+        (for [root cfg
+              src-file (files/get-source-files root)]
+          src-file)]
+    (reduce (fn [acc a-file]
+              (registry/register-path acc a-file))
+            reg
+            all-files)))
 
 (defn start-app []
-  (registry/reset-all!)
-  (println "Registering paths")
-  (register-all-paths)
-  (println "Creating template entries")
-  (create-template-entries @registry/module-to-path)
-  (println "Creating ember entries")
-  (create-ember-entries @registry/module-to-path)
-  (println "Creating template graph")
-  (swap! template-graph/template-graph
-         #(template-graph/init-templates (vals @registry/path-to-entry)))
-  (println "Creating property graph")
-  (property-graph/setup-property-graph)
-  (println "Done"))
+  (let [cfg @config/app-roots
+        reg
+        (-> (registry/empty-registry)
+            (register-all-paths cfg)
+            create-template-entries
+            create-ember-entries)
+        t-graph (template-graph/init-templates reg)
+        p-graph (property-graph/setup-property-graph t-graph reg)]
+    {:registry reg
+     :template-graph t-graph
+     :property-graph p-graph}))
 
 (defn entry-item->prop-node [entry entry-item]
   (let [property-index (:index @property-graph/property-graph)

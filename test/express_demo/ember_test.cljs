@@ -1,5 +1,6 @@
 (ns express-demo.ember-test
   (:require [express-demo.ember :as sut]
+            [pjstadig.humane-test-output]
             [cljs.test :refer-macros [deftest is are testing run-tests]]))
 
 (defn array-to-ast [a]
@@ -52,19 +53,16 @@
     ))
 
 (deftest extract-gets
-  (are [x y] (= (->> {:property-gets []}
-                     (sut/extract-gets (array-to-ast x)))
-                y)
-    ["export default Foo.extend({"
-     "  c: Ember.computed('bar', function() { this.get('bar'), that.get('baz')}),"
-     "  actions: {"
-     "    doStuff() { this.get('foo')}"
-     "  }"
-     "})"]
-    ["foo" "bar"]
-    ))
-
-;; (deftest extract-sets)
+  (let [input
+        ["export default Foo.extend({"
+         "  c: Ember.computed('bar', function() { this.get('bar'), that.get('baz')}),"
+         "  actions: {"
+         "    doStuff() { this.get('foo')}"
+         "  }"
+         "})"]
+        out (sut/extract-gets (array-to-ast input)
+                              {:property-gets []})]
+    out))
 
 (cljs.test/run-tests 'express-demo.ember-test)
 

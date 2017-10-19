@@ -1,6 +1,6 @@
 (ns express-demo.registry
   (:require [cljs.nodejs :as nodejs]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [express-demo.config :as config]
             [cljs.core.match :refer-macros [match]]))
 
@@ -10,36 +10,35 @@
 (defn module-type [str]
   (first (.split str ":")))
 
-(def all-paths
-  "all file paths known to the app"
-  (atom #{}))
+(defn empty-registry []
+  {:all-paths #{}
+   :path-to-module {}
+   :module-to-path {}
+   :path-to-entry {}})
 
-(def path-to-module
-  "a mapping of paths to module names"
-  (atom {}))
+(defn register-path
+  "add the path to the global set of known paths.
+  add a two-way mapping between the module name and the file path"
+  [reg absolute-path]
+  (let [[module-type m] (module-name absolute-path)]
+    (if (contains? valid-module-types module-type)
+      (-> reg
+          (update :all-paths #(conj % absolute-path))
+          (update :path-to-module #(assoc % absolute-path m))
+          (update :module-to-path #(assoc % m absolute-path)))
+      reg)))
 
-(def module-to-path
-  "a  mapping of module names to paths"
-  (atom {}))
-
-(def path-to-entry
-  "maps absolute paths to actual entries"
-  (atom {}))
-
+(defn register-entry
+  [reg entry]
+  )
 (defn find-entry
   "finds an entry in the registry based on an absolute
   path or a module name"
-  [str]
+  [str reg]
   (if (= (first str) "/")
-    (@path-to-entry str)
-    (@path-to-entry (@module-to-path str))))
-
-
-(defn reset-all! []
-  (reset! all-paths #{})
-  (reset! path-to-module {})
-  (reset! module-to-path {})
-  (reset! path-to-entry {}))
+    (get-in reg :path-to-entry str)
+    (get-in reg :path-to-entry
+            (get-in reg :module-to-path str))))
 
 (defn singularize [name]
   (.substring name 0 (dec  (.-length name))))
@@ -107,21 +106,9 @@
            [["" module-dir & dirs]] (make-classic-module-name (singularize module-dir) dirs)
            :else ["unknown" nil])))
 
-(def found-module-types (atom #{}))
 (def valid-module-types
   "the module types ember's resolver recognizes"
   #{"route" "controller" "template" "component"
     "view" "model" "adapter" "serializer"
     "mixin" "helper"})
 
-(defn register-path
-  "add the path to the global set of known paths.
-  add a two-way mapping between the module name and the file path"
-  [absolute-path]
-  (let [[module-type m] (module-name absolute-path)]
-    (swap! all-paths #(conj % absolute-path))
-    (if (contains? valid-module-types module-type)
-      (do
-        (swap! found-module-types #(conj % module-type))
-        (swap! path-to-module #(assoc % absolute-path m))
-        (swap! module-to-path #(assoc % m absolute-path))))))

@@ -1,6 +1,6 @@
 (ns express-demo.hbs
   (:require [cljs.nodejs :as nodejs]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             clojure.set))
 
 (nodejs/enable-util-print!)
@@ -65,7 +65,7 @@
 
 (def extract-paths (partial all-nodes-of-type "PathExpression"))
 
-extract-paths
+;; extract-paths
 
 (s/def ::line nat-int?)
 (s/def ::column nat-int?)
@@ -73,7 +73,6 @@ extract-paths
 (s/def ::start ::position)
 (s/def ::end ::position)
 (s/def ::location (s/keys :req-un [::start ::end]))
-(s/def ::binding (s/keys :req-un [::path ::module-name ::type ::location]))
 
 (defn location-map [node]
   (let [get-loc #(js->clj (aget node "loc" %) :keywordize-keys true)]
@@ -81,7 +80,7 @@ extract-paths
      :end (get-loc "end")}))
 
 (defn ast [entry]
-  (parse? (:src entry)))
+  (parse? (::src entry)))
 
 (defn is-component? [block-or-mustache registry]
   (let [possible-name (str "component:" (.. block-or-mustache -path -original))]
@@ -122,7 +121,7 @@ extract-paths
 
 (defn process-mustache-invocations [entry registry]
   (update-in entry
-             [:invocations]
+             [::invocations]
              (fn [i]
                (apply conj i (->> entry
                                   ast
@@ -132,17 +131,17 @@ extract-paths
 
 (defn process-partials [entry]
   (update-in entry
-             [:partials]
+             [::partials]
              (fn [i]
                (apply conj i (->> entry
                                   ast
                                   (all-nodes-of-type "MustacheStatement")
-                                  (filter #(is-partial? %))
+                                  (filter is-partial?)
                                   (map node->partial))))))
 
 (defn process-block-invocations [entry registry]
   (update-in entry
-             [:invocations]
+             [::invocations]
              (fn [i]
                (apply conj i (->> entry
                                   ast
@@ -152,7 +151,7 @@ extract-paths
 
 (defn process-block-params [entry]
   (update-in entry
-             [:block-params]
+             [::block-params]
              (fn [i]
                (apply conj i (->> entry
                                   ast
@@ -167,7 +166,7 @@ extract-paths
 
 (defn process-bound-paths [entry]
   (let [invocation-paths (->> entry
-                              :invocations
+                              ::invocations
                               (map :path)
                               set)
         all-paths (->> entry
@@ -179,8 +178,9 @@ extract-paths
                       (remove #(contains? invocation-paths %))
                       (remove #(re-find #"-" (:path %))))]
 
-    (update-in entry [:bindings] #(into [] bindings))))
+    (update-in entry [::bindings] #(into [] bindings))))
 
+;; TODO: make sure this works with the whole registry
 (defn create-template-entry [str module-name registry]
   (-> (create-entry str module-name)
       (process-mustache-invocations registry)
@@ -191,15 +191,15 @@ extract-paths
       (process-bound-paths)))
 
 (defn create-entry [template-str module-name]
-  {:src template-str
-   :module-name module-name
-   :invocations []
-   :partials []
-   :block-params []
-   :actions []
-   :bindings []})
+  {::src template-str
+   ::module-name module-name
+   ::invocations []
+   ::partials []
+   ::block-params []
+   ::actions []
+   ::bindings []})
 
-(def test-hbs-file "<div> Welcome!</div>
+#_(def test-hbs-file "<div> Welcome!</div>
 
 {{bound.path}}
 {{#some-component foo=bar as |stuff|}}
@@ -216,8 +216,8 @@ extract-paths
   {{item.name}}
 {{/each}}")
 
-(def test-registry {"component:another-component" "/foo/component"
+#_(def test-registry {"component:another-component" "/foo/component"
                     "component:some-component" "/foo/component"})
 
-;; (:invocations (create-template-entry test-hbs-file "template:components/foo" test-registry))
+#_(create-template-entry test-hbs-file "template:components/foo" test-registry)
 

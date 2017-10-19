@@ -1,10 +1,8 @@
 (ns express-demo.property-graph
   (:require [cljs.nodejs :as nodejs]
-            [express-demo.template-graph :as template-graph]
             [loom.graph :as graph]
-            [express-demo.registry :as registry]
-            [clojure.spec :as s]
-            [clojure.spec.test :as stest]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.test.alpha :as stest]
             [cljs.core.match :refer-macros [match]]
             [express-demo.graph-visualizer :as vis]))
 
@@ -96,12 +94,14 @@
        (create-block-params entry)
        (create-invocations entry)))
 
-(defn add-module-nodes-to-graph [g module-names]
-  (reduce
-   #(apply graph/add-nodes %1 (create-graph-nodes (@registry/path-to-entry
-                                                   (@registry/module-to-path %2))))
-   g
-   module-names))
+(defn add-module-nodes-to-graph [g reg]
+  (let [find-entry (fn [reg module-name]
+                     ((reg :path-to-entry)
+                      ((reg :module-to-path) module-name)))]
+    (reduce
+     #(apply graph/add-nodes %1 (create-graph-nodes (find-entry reg %2)))
+     g
+     (keys (reg :module-to-path)))))
 
 (defn find-property-sources
   "returns module names. if a given node is in a template, its sources could either
@@ -184,7 +184,7 @@
               (let [contained-bindings (find-contained-bindings
                                         bp
                                         (get-in indexed-nodes [(:src-module bp) "bound-path"] []))
-                    new-edges (map (fn [cb] [bp cb]) contained-bindings)]
+                    new-edges (map bp contained-bindings)]
                 (apply graph/add-edges pg new-edges)))
             property-graph
             block-params)))
@@ -220,10 +220,10 @@
 
 ;; (stest/instrument `prop-node)
 
-(def prop-node-graph
+(defn prop-node-graph [reg]
   (add-module-nodes-to-graph
    (graph/digraph)
-   (keys @express-demo.registry/module-to-path)))
+   (keys (reg :module-to-path))))
 
 (defn indexed-prop-nodes
   "indexes the property nodes in a graph by module, then by type"
@@ -237,21 +237,21 @@
 
 (def indexed-sample-nodes (indexed-prop-nodes sample-prop-graph))
 
-(vis/open-graph (create-connected-graph sample-prop-graph sample-template-graph indexed-sample-nodes))
-(count (graph/edges (create-connected-graph sample-prop-graph sample-template-graph indexed-sample-nodes)))
+;; (vis/open-graph (create-connected-graph sample-prop-graph sample-template-graph indexed-sample-nodes))
+;; (count (graph/edges (create-connected-graph sample-prop-graph sample-template-graph indexed-sample-nodes)))
 
 
 (def property-graph (atom {}))
 
-(defn setup-property-graph []
+(defn setup-property-graph [reg template-graph]
   (reset! property-graph
           (let [starting-graph (add-module-nodes-to-graph
                                   (graph/digraph)
-                                  (keys @express-demo.registry/module-to-path))
+                                  reg)
                   idx (indexed-prop-nodes starting-graph)]
               {:index idx
                :graph (create-connected-graph starting-graph
-                                              @express-demo.template-graph/template-graph
+                                              template-graph
                                               idx)})))
 
 (defn entry-item->prop-node [entry entry-item]
@@ -263,4 +263,5 @@
     prop))
 
 (defn predecessors [entry entry-item]
-  (graph/predecessors @property-graph (entry-item->prop-node entry entry-item)))
+  (graph/predecessors @property-graph
+                      (entry-item->prop-node entry entry-item)))

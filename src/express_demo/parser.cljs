@@ -21,11 +21,10 @@
 
 
 (defn visit-imports [path]
-  (let [foo #js []
+  (let [foo (read-string "#js []")
         ast (parse-js-file path)
-        cb #js {:visitImportDefaultSpecifier (fn [a-path]
-                                               (let [out (aget a-path "node" "local" "name")]
-                                                 (do (.push foo out))))}]
-    (do (print "visiting")
-        (.visit recast ast cb)
-        foo)))
+        cb (read-string "#js {:visitImportDefaultSpecifier (fn [a-path]\n
+                              (let [out (aget a-path \"node\" \"local\" \"name\")]\n
+                              (.push foo out)))}")]
+    (print "visiting")
+    (.visit recast ast cb) foo))

@@ -69,9 +69,9 @@
     (.get server "/entry" get-entry-item)
     (.get server "/prop_node" get-prop-node)
     (.get server "/parents" get-parents)
-    (.listen server 3000 (fn []
+    (.listen server 5300 (fn []
                         (do (println "there are " (count @all-source-paths) "files to parse")
-                            (println "Server started on port 3000"))))))
+                            (println "Server started on port 5300"))))))
 
 (set! *main-cli-fn* -main)
 

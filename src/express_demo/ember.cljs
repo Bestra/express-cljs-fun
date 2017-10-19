@@ -1,6 +1,7 @@
 (ns express-demo.ember
   (:require [cljs.nodejs :as nodejs]
             [express-demo.files :as files]
+            [clojure.spec.alpha :as s]
             [express-demo.registry :as registry]
             [express-demo.config :as config]))
 
@@ -16,24 +17,31 @@
    :actions []
    })
 
-(defn try-get [x & key-list]
+(defn try-get
+  "helper function to try to get a nested key in a js object."
+  [x & key-list]
+
   (reduce (fn [obj k]
-            (if obj (aget obj k) nil))
+            (when obj (aget obj k)))
           x
           key-list))
 
-(defn get-keys [x key-list]
+(defn get-keys "turns a list of keys in to a map of those keys and values"
+  [x key-list]
   (into {} (for [k key-list]
              [(keyword k) (aget x k)])))
 
-(defn location-map [node]
+(defn location-map "returns a map of the start and end locations for a given ast node"
+  [node]
   (let [get-loc (fn [pos]
                   (let [loc (aget node "loc" pos)]
                     (get-keys loc ["line" "column"])))]
     {:start (get-loc "start")
      :end (get-loc "end")}))
 
-(defn parse-str [str]
+(defn parse-str
+  "turns a string into an ast via babel"
+  [str]
   (.parse recast str (js-obj "esprima" babel)))
 
 (defn parse-js-file [path]
@@ -47,15 +55,16 @@
 (defn extract-node-paths
   "extracts all NodePath objects of a given type that pass the filter-fn from the ast"
   [node-type recurse? filter-fn ast]
-  (let [collector #js []
+  (let [collector (array)
         visitor-name (str "visit" node-type)
-        cb (js-obj visitor-name
-                   (fn [a-path] (this-as this
-                                  (do (if (filter-fn a-path) (.push collector a-path))
-                                      (if recurse? (.traverse this a-path) false)))))]
-    (do
-      (.visit recast ast cb)
-      collector)))
+        cb (js-obj
+            visitor-name
+            (fn [a-path]
+              (this-as this
+                (do (if (filter-fn a-path)
+                      (.push collector a-path))
+                    (if recurse? (.traverse this a-path) false)))))]
+    (.visit recast ast cb) collector))
 
 (defn is-get-or-set? [get-or-set a-path]
   (let [callee (aget a-path "node" "callee")
@@ -112,10 +121,10 @@
   [ast]
   (let [export (first (extract-all-node-paths "ExportDefaultDeclaration" false ast))]
     (if-let [export-args (try-get export "node" "declaration" "arguments")]
-      (if (and (< 0 (aget export-args "length"))
-               (aget (last export-args) "properties"))
-        (or (aget (last export-args) "properties") [])
-        nil))))
+      (when (and
+             (pos? (aget export-args "length"))
+             (aget (last export-args) "properties"))
+        (or (aget (last export-args) "properties") [])))))
 
 (defn export-mixin-paths
   "extract the identifiers for any mixins from the default export"
@@ -132,16 +141,12 @@
 ;; Ember.Something.extend({}) literal
 (defn extract-prototype-assignments [ast entry]
   (if-let [props (export-props ast)]
-    (let [all-assignments (->> props
-                          (map node->prototype-assignment))
+    (let [all-assignments (map node->prototype-assignment props)
           assignments (remove #(= "actions" (:path %)) all-assignments)]
       (update entry
               :property-sets
               #(apply conj % assignments)))
     entry))
-
-;; (def sample-js-path "/Users/bestra/mh/tahi/client/app/pods/components/paper-version-picker/component.js")
-;; (create-ember-entry sample-js-path "component:paper-version-picker")
 
 (defn identifier-segments
   [member-expression]
@@ -200,18 +205,20 @@
 (defn extract-constructor-identifiers [ast]
   (if-let [export-path (first (extract-all-node-paths "ExportDefaultDeclaration" false ast))]
     (if-let [export-declaration (aget export-path "node" "declaration")]
-      (if-let [callee (.-callee export-declaration)]
-        (identifier-segments callee)
-        nil))))
+      (when-let [callee (.-callee export-declaration)] (identifier-segments callee)))))
 
-(defn create-ember-entry [file-path module-name]
+(defn create-ember-entry [src module-name]
   "This function is the driver in the namespace"
-  (let [ast (parse-js-file file-path)]
+  (let [ast (parse-str src)]
     (->> (base-entry module-name)
          (create-module-info ast)
          (extract-prototype-assignments ast)
          (extract-gets ast)
          (extract-sets ast))))
+
+#_(def ast (-> "import Foo from \"tahi/foo/component\"
+     export default Foo.extend({bar: 42})"
+               (parse-str)))
 
 #_(-> "import Foo from \"tahi/foo/component\"
      export default Foo.extend({bar: 42})"

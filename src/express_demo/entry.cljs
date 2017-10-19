@@ -1,5 +1,5 @@
 (ns express-demo.entry
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 (s/def ::line nat-int?)
 (s/def ::column nat-int?)
@@ -12,7 +12,7 @@
 
 (defn try-get [x & key-list]
   (reduce (fn [obj k]
-            (if obj (aget obj k) nil))
+            (when obj (aget obj k)))
           x
           key-list))
 
