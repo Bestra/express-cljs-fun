@@ -49,7 +49,8 @@
 (defn find-nodes [ast node-type filter-fn]
   (let [found-nodes #js[]
         filter (fn [node]
-                 (if (filter-fn node) (.push found-nodes node)))
+                 (if (filter-fn node) (.push found-nodes node))
+                 node)
         finder (js-obj node-type
                        #js {:enter filter})]
     (.traverse htmlbars ast finder)
@@ -61,11 +62,9 @@
     (.parse htmlbars ast-or-str)))
 
 (defn all-nodes-of-type [node-type ast]
-  (find-nodes (parse? ast) node-type #(identity true)))
+  (find-nodes (parse? ast) node-type (fn [] true)))
 
 (def extract-paths (partial all-nodes-of-type "PathExpression"))
-
-;; extract-paths
 
 (s/def ::line nat-int?)
 (s/def ::column nat-int?)
@@ -118,6 +117,40 @@
      :path path
      :invocation-type "component"
      :attrs (map n->hash-pair (.. node -hash -pairs))}))
+
+;; the attr pairs need to be turned into 'set' nodes too
+(defn node->mustache-call [node]
+  (let [node->path (fn [path-node]
+                     {:path (.-original path-node)
+                      :location (location-map path-node)})
+        n->hash-pair (fn [n]
+                       {:key (aget n "key")
+                        :location (location-map n)})
+        path (node->path (.. node -path))]
+    {:location (location-map node)
+     :path path
+     :attrs (map n->hash-pair (.. node -hash -pairs))}))
+
+(defn get-mustaches [ast]
+  (->> (all-nodes-of-type "MustacheStatement" ast)
+       (map node->mustache-call)))
+
+(defn get-blocks
+  "blocks are just mustaches that have block params included"
+  [ast]
+  (let [node->block-params (fn
+                             [block-node]
+                             (let [node (aget block-node "program")
+                                   loc (location-map node)
+                                   params (aget node "blockParams")]
+                               (map (fn [p] {:path p :loc loc}) params)))]
+    (->> (all-nodes-of-type "BlockStatement" ast)
+         (map (fn [n]
+                (assoc (node->mustache-call n) :block-params (node->block-params n)))))))
+
+(defn extract-hbs-mustaches [src]
+  {::unprocessed-mustaches (get-mustaches (parse? src))
+   ::unprocessed-blocks (get-blocks (parse? src))})
 
 (defn process-mustache-invocations [entry registry]
   (update-in entry
@@ -190,16 +223,12 @@
       (process-actions)
       (process-bound-paths)))
 
+
 (defn create-entry [template-str module-name]
   {::src template-str
-   ::module-name module-name
-   ::invocations []
-   ::partials []
-   ::block-params []
-   ::actions []
-   ::bindings []})
+   ::module-name module-name})
 
-#_(def test-hbs-file "<div> Welcome!</div>
+(def test-hbs-file "<div> Welcome!</div>
 
 {{bound.path}}
 {{#some-component foo=bar as |stuff|}}
