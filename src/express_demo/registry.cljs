@@ -65,10 +65,10 @@
     s))
 
 (defn template-module->rendering-context
-  "given template:foo/bar go to controller:foo/bar,
-   and given template:components/foo/bar go to component:foo/bar"
-  [template-module]
-  (let [segments (clojure.string/split template-module #"[:/]")]
+  "given template:foo/bar returns controller:foo/bar,
+   and given template:components/foo/bar returns component:foo/bar"
+  [template-module-str]
+  (let [segments (clojure.string/split template-module-str #"[:/]")]
     (match [segments]
            [["template" "components" & paths]]
            (str "component:"
@@ -78,10 +78,10 @@
                 (clojure.string/join "/" paths)))))
 
 (defn rendering-context->template-module
-  "given controller:foo/bar go to template:foo/bar,
-   and given component:foo/bar go to template:components/foo/bar"
-  [context-module]
-  (let [segments (clojure.string/split context-module #"[:]")]
+  "given controller:foo/bar returns template:foo/bar,
+   and given component:foo/bar returns template:components/foo/bar"
+  [context-module-str]
+  (let [segments (clojure.string/split context-module-str #"[:]")]
     (match [segments]
            [["component" & paths]]
            (str "template:components/" (clojure.string/join "/" paths))

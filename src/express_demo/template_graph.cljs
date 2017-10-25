@@ -2,22 +2,17 @@
   "contains the logic for creating the DAG of routes, rendering contexts, and templates"
   (:require [cljs.nodejs :as nodejs]
             [loom.graph :as graph]
+            [express-demo.hbs-entry :as hbs]
             [express-demo.registry :as registry]
             [cljs.core.match :refer-macros [match]]
             [express-demo.graph-visualizer :as vis]))
 
-(def template-graph
-  "the stored graph of template invocations"
-  (atom (graph/digraph)))
-
-(defn template-invocations->context-pairs [t]
+(defn context-pairs-from-invocations [template-entry]
   (let [create-pair (fn [template-module]
-                      (let [context-module (registry/template-module->rendering-context template-module)]
-                        [context-module template-module]))
-        context-pairs (->> t
-                            :invocations
-                            (map #(str "template:components/" (:name %)))
-                            (map create-pair))]
+                      ([(registry/template-module->rendering-context template-module)
+                         template-module]))
+        context-pairs (->> (hbs/invoked-template-names template-entry)
+                           (map create-pair))]
     context-pairs))
 
 (defn add-template-entry
@@ -26,7 +21,7 @@
   connect any partials to the current template"
   [g t reg]
   (let [parent (:module-name t)
-        possible-children (template-invocations->context-pairs t)
+        possible-children (context-pairs-from-invocations t)
         module-to-path (reg :module-to-path)
         path-to-module (reg :path-to-module)
         registered-children (map (fn [child-pair]
@@ -56,7 +51,7 @@
             entries)))
 
 #_(vis/open-graph
- (add-template-entry (graph/digraph)
+ #_(add-template-entry (graph/digraph)
                      (registry/find-entry "template:components/journal-thumbnail")
                      @registry/module-to-path))
 
@@ -77,4 +72,4 @@
         stats (concat "moduleType,moduleName,inputs,outputs,lineCount\n" (map node-stats (graph/nodes g)))]
     (.writeFileSync fs "template-stats.csv" (clojure.string/join "" stats))))
 
-;; (write-statistics-file)
+#_(write-statistics-file)

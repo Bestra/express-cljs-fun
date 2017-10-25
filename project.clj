@@ -18,12 +18,32 @@
                                 [org.clojure/tools.nrepl "0.2.13"]]}
                  :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}}
   :cljsbuild {
-    :builds [{:id "server"
-              :source-paths ["src"]
-              :compiler {
-                :main express-demo.server
-                :output-to "resources/public/js/server-side/server.js"
-                :output-dir "resources/public/js/server-side"
-                :target :nodejs
-                :optimizations :none
-                :source-map true}}]})
+              :test-commands
+              {"ember" ["node" "resources/public/js/test/ember-test.js"]}
+              :builds [{:id "server"
+                        :source-paths ["src"]
+                        :compiler {
+                                   :main express-demo.server
+                                   :output-to "resources/public/js/server-side/server.js"
+                                   :output-dir "resources/public/js/server-side"
+                                   :target :nodejs
+                                   :optimizations :none
+                                   :source-map true}}
+                       {:id "test"
+                        :source-paths ["src" "test"]
+                        :compiler {
+                                   :main express-demo.ember-test
+                                   :output-to "resources/public/js/test/ember-test.js"
+                                   :output-dir "resources/public/js/test"
+                                   :target :nodejs
+                                   :optimizations :none
+                                   :source-map true}}
+                       {:id "debug"
+                        :source-paths ["src" "test"]
+                        :compiler {
+                                   :main express-demo.hbs-test
+                                   :output-to "resources/public/js/debug/hbs-test.js"
+                                   :output-dir "resources/public/js/debug"
+                                   :target :nodejs
+                                   :optimizations :none
+                                   :source-map true}}]})

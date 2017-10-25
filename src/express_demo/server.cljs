@@ -75,15 +75,15 @@
 
 (set! *main-cli-fn* -main)
 
-(defn test-fn []
-  (let [p "/Users/bestra/mh/tahi/client/app/pods/components/paper-sidebar/template.hbs"
-        l 38
-        c 16
-        entry (express-demo.registry/find-entry p)
-        item (entry/lookup-position entry l c)
-        node (property-graph/entry-item->prop-node entry item)]
-    (println node)
-    node))
+;; (defn test-fn []
+;;   (let [p "/Users/bestra/mh/tahi/client/app/pods/components/paper-sidebar/template.hbs"
+;;         l 38
+;;         c 16
+;;         entry (express-demo.registry/find-entry p)
+;;         item (entry/lookup-position entry l c)
+;;         node (property-graph/entry-item->prop-node entry item)]
+;;     (println node)
+;;     node))
 
-(loom.graph/predecessors (:graph @property-graph/property-graph) (test-fn))
+;; (loom.graph/predecessors (:graph @property-graph/property-graph) (test-fn))
 

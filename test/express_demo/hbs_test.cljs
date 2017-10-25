@@ -1,11 +1,11 @@
-(ns express-demo.ember-test
-  (:require [express-demo.ember :as sut]
+(ns express-demo.hbs-test
+  (:require [express-demo.hbs :as sut]
             [pjstadig.humane-test-output]
             [cljs.test :refer-macros [deftest is are testing run-tests]]))
 
 (defn array-to-ast [a]
   (-> (clojure.string/join "\n" a)
-      sut/parse-str))
+      sut/parse?))
 
 (deftest test-base-entry
   (is (= (sut/base-entry "foo")
@@ -13,6 +13,22 @@
           :property-sets []
           :property-gets []
           :actions []})))
+
+(def test-hbs-file "<div> Welcome!</div>
+{{bound.path}}
+{{#some-component foo=bar as |stuff|}}
+  There's {{stuff}} here.
+{{/some-component}}
+{{partial \"foo-bar\"}}
+
+<button {{action \"clicked\"}}>Click me</button>
+{{another-component
+  name=\"bob\"
+  clicked=(action \"clicked\")}}
+
+{{#each items as |item|}}
+  {{item.name}}
+{{/each}}")
 
 (deftest module-info
   (let [arr-to-info (fn [arr]
@@ -35,36 +51,9 @@
        :superclass-path  {:app "my-app/components/super"}
        :mixin-paths [{:app "my-app/foo"} {:app "my-app/bar"}]})))
 
-(deftest extract-prototype-assignments
-  (are [x y] (= (->> {:property-sets []}
-                     (sut/extract-prototype-assignments (array-to-ast x))
-                     :property-sets
-                     (map :path))
-                y)
-    ["export default Foo.extend({"
-     "  a: 'a property',"
-     "  b(x) { return x + 1},"
-     "  c: Ember.computed('bar', function() {}),"
-     "  actions: {"
-     "    doStuff() {}"
-     "  }"
-     "})"]
-    ["a" "b" "c"]
-    ))
 
-(deftest extract-gets
-  (let [input
-        ["export default Foo.extend({"
-         "  c: Ember.computed('bar', function() { this.get('bar'), that.get('baz')}),"
-         "  actions: {"
-         "    doStuff() { this.get('foo')}"
-         "  }"
-         "})"]
-        out (sut/extract-gets (array-to-ast input)
-                              {:property-gets []})]
-    out))
 
 (defn -main []
-  (cljs.test/run-tests 'express-demo.ember-test))
+  (cljs.test/run-tests 'express-demo.hbs-test))
 
 (set! *main-cli-fn* -main)
